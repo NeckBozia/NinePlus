@@ -343,7 +343,8 @@ iOS 侧的 `CLLocationManager` 配置（`NinebotRecordingView.swift:178-181`）�
 | `distanceFilter = 1` | `setMinUpdateDistanceMeters(1f)` |
 | `pausesLocationUpdatesAutomatically = false` | 默认不暂停，无需设置 |
 
-用 `FusedLocationProviderClient` 而非 `LocationManager`——前者做了多源融合，更接近 iOS 的行为。
+**定位 SDK 待定，见 [pending-decisions.md](./pending-decisions.md) 的 D8。**
+`FusedLocationProviderClient` 依赖 Google Play 服务，无 GMS 的设备上不可用；高德定位 SDK 不依赖 GMS 且直接返回 GCJ-02，能省掉坐标转换。开工前必须先定。
 
 ### 验收
 

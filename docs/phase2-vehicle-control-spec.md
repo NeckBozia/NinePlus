@@ -297,7 +297,9 @@ Canvas(modifier = Modifier.fillMaxWidth().height(chartHeight)) {
 
 ### 用途
 
-这是排查「为什么这个字段不显示」最快的工具。社区服务端与官方服务端返回的字段可能有差异，这个面板能直接看出来。**建议保留，不要因为"用户不需要"而砍掉**。
+这是排查「为什么这个字段不显示」最快的工具。社区服务端与官方服务端返回的字段可能有差异，这个面板能直接看出来。
+
+**做不做待定，见 [pending-decisions.md](./pending-decisions.md) 的 D4。** 砍掉省 2 天。
 
 ### Android 实现
 
