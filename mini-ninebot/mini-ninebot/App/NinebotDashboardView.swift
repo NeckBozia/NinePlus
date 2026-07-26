@@ -198,8 +198,7 @@ struct NinebotDashboardView: View {
 
     private var isDashboardRefreshLoading: Bool {
         guard model.isLoading else { return false }
-        let message = model.loadingMessage ?? ""
-        return message.contains("刷新车况") || message.contains("解析车辆位置")
+        return model.loadingOperation?.showsDashboardRefreshIndicator == true
     }
 
     private var showsRefreshIndicator: Bool {
