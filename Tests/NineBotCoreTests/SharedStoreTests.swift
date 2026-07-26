@@ -231,7 +231,7 @@ final class SharedStoreTests: XCTestCase {
         XCTAssertEqual(history.count, 1)
         XCTAssertEqual(store.historyCount(sn: sn), 1)
 
-        let point = try? XCTUnwrap(history.first)
+        let point = history.first
         XCTAssertEqual(point?.sn, sn)
         XCTAssertEqual(point?.battery, 73)
         XCTAssertEqual(point?.endurance, 31)
