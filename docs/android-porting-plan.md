@@ -156,7 +156,14 @@ ride_points  (ride_id FK, seq, timestamp, lat, lon, speed_kmh, accel_g, h_accura
 
 ### 现成的替代：社区兼容实现
 
-[`wuchiawuchi/nineplus-ha-server`](https://github.com/wuchiawuchi/nineplus-ha-server)（Python）实现了同一套契约，用 `ninecli` 直连九号云 —— 正好对应 `.gitignore` 里那行 `ninecli-source/`。
+[`wuchiawuchi/nineplus-ha-server`](https://github.com/wuchiawuchi/nineplus-ha-server)（Python）是**专门针对本 App 写的适配器**，不是碰巧兼容：
+
+- README 开篇即写「为 NineBot+ iOS 客户端提供九号云端 API」，并附有 iPhone 端的填写说明
+- 自称「适配器」，对 `/devices/register` 返回**兼容响应**（自己并不发 APNs），说明是照着客户端的调用行为反向对齐的
+- 端口默认 19009，与 App 设置页占位符一致
+- 用 `ninecli` 直连九号云 —— 正好对应 `.gitignore` 里那行 `ninecli-source/`，与 Home Assistant 生态的 `hasscc/ninebot` 同源，但**不依赖 Home Assistant**（名字里的 ha 有误导性），是独立服务
+
+时间线也印证了它的来历：上游仓库 7 月 12 日同时出现两个 issue（[#1](https://github.com/JieFuHe/NinePlus/issues/1) 英文、[#2](https://github.com/JieFuHe/NinePlus/issues/2) 中文）都在问「怎么搭建 NinePlus 平台服务器」且无人给出官方答案，9 天后（7 月 21 日）这个适配器出现。
 
 | 项 | 情况 |
 | --- | --- |
