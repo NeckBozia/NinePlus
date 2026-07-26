@@ -68,7 +68,7 @@
 
 `main` 分支砍掉了代理模式，只保留 `/accounts/login`。**社区适配器只实现了 `/accounts/login`，没有任何 `/auth/*` 路由** —— 所以它是**平台模式**的替代品，正好对上 `main`。
 
-**这里有个可能更省事的路子值得考虑**：自用单账号的话，`ninecli serve` 本身就是一个能跑的服务端，不需要社区适配器那一层。代价是端点集合由 ninecli 决定（不一定覆盖客户端要的全部 17 个），而且没有多账号和管理后台。这条要不要走，记成待定项交给你 —— 影响的是 Android 侧对齐哪一套端点。
+曾经考虑过一条更省事的路子：自用单账号的话，`ninecli serve` 本身就是能跑的服务端，不需要社区适配器那一层。**已放弃**（D12）—— 要给两位朋友用，而 `ninecli serve` 是单账号的，登录会替换掉上一个人的会话。分析过程留在 D12 里，将来若变成单人可以翻出来。
 
 ### 从客户端契约推断的 Platform 职责
 
@@ -160,7 +160,11 @@
 
 HyperOS 2 提供**焦点通知**，HyperOS 3 在其之上提供**超级岛**（灵动岛形态）。两者模板不同，岛只在 OS3 上有。
 
-**实现方式有两条路，本地通知也能触发**（不强制走服务端推送）：
+> **⚠️ 下面这套已经实测判定不可做，2026-07-27。** 完整证据见 [hyperos3-island-probe-report.md](./hyperos3-island-probe-report.md)。留着是因为技术细节仍然准确，将来若拿到资质可以直接用。
+>
+> **结论**：JSON 格式对、模板渲染成功，但 SystemUI 拿 APK 签名 + TrustZone 设备签名**联网到 `hyperos.developer.xiaomi.com` 查该包有没有被授予 scope 20032**，没授予就把通知撤下降级。不是用户开关，也不是本地白名单，**是服务端在线鉴权且绑正式签名**，个人 debug 包拿不到。
+
+**实现方式有两条路，本地通知能把 JSON 送到系统**（不强制走服务端推送），**但过不了鉴权**：
 
 ```kotlin
 val notification = Notification.Builder(context, channelId)
@@ -197,7 +201,7 @@ notificationManager.notify(id, notification)
 | 厂商 | 对应能力 | 标准 API 是否够用 |
 | --- | --- | --- |
 | OPPO ColorOS 16 | 流体云 | ✅ **够**。已对接 Android 16 Live Updates，遵循 Google 实时活动规范的应用可直接适配，**无需单独接 OPPO** |
-| 小米 HyperOS 3 | 超级岛 | ⚠️ 待实测（C1）。HyperOS 3 基于 Android 16，标准 API 本身可用，但小米主推私有的 `miui.focus.param`，是否自动映射到超级岛官方没说明 |
+| 小米 HyperOS 3 | 超级岛 | ❌ **上不了岛**（实测）。标准 API 发得出通知，但不会进超级岛；私有的 `miui.focus.param` 需要小米服务端授予 scope 20032 且绑正式签名。小米机型上只能是普通通知 |
 | 华为 HarmonyOS | 实况窗 | ❌ 需单独接，接口不同 |
 | vivo OriginOS | 原子岛 | ❔ 未查证 |
 | 其余机型 | 标准通知 | ✅ 至少是常驻进度通知 |
@@ -232,7 +236,7 @@ iOS Live Activity 的 `ContentState` 有 8 个字段：`battery`、`estimatedRan
 推送解决的是「App 完全没运行时也能即时收到变化」。但这个 App 的数据源本来就是自建服务端的轮询结果，客户端并不需要毫秒级即时性：
 
 - 常规刷新 → WorkManager 定时拉，间隔沿用 iOS 那套自适应策略（充电 15 / 使用中 20 / 空闲 30 分钟）
-- 充电中的实时活动 → 充电时起一个前台服务，自己定时拉并更新通知，岛随之更新。**本地通知足以驱动 `ProgressStyle`**；能不能驱动 `miui.focus.param` 是 C1
+- 充电中的实时活动 → 充电时起一个前台服务，自己定时拉并更新通知。**本地通知足以驱动标准 `ProgressStyle`**；`miui.focus.param` 那条已实测判定不可做（要小米服务端鉴权 + 正式签名）
 
 这样完全不碰推送，省掉厂商 SDK 对接、资质申请、服务端多通道适配三件事。代价是 App 被系统杀死后不会被唤醒 —— 自用可以接受。
 

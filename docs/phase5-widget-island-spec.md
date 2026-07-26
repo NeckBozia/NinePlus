@@ -1208,7 +1208,21 @@ b.setWhen(estimatedFullAtMillis)
 
 **要问的**：骑行中你会去看桌面 widget 吗？会的话 5.4 的「使用中」档要从 20 分钟压到 10 分钟，代价是耗电。
 
-### C1 · 小米超级岛是否接受本地通知驱动〔阻塞性〕
+### C1 · 小米超级岛是否接受本地通知驱动 〔已实测结案：不可做〕
+
+> **结论（2026-07-27 真机实测）**：**不做。** 完整报告见 [hyperos3-island-probe-report.md](./hyperos3-island-probe-report.md)。
+>
+> 测试机 Xiaomi 24129PN74C，HyperOS 3（OS3.0 / V816），Android 16 / SDK 36。判定不是推断，是 logcat 抓到的完整鉴权链：`miui.focus.param` 的 JSON **被系统正确解析、模板渲染成功**（`onInflateSuccess`），89ms 后 SystemUI 拿 APK 签名 + TrustZone 设备签名联网到 `hyperos.developer.xiaomi.com/xms/app/auth/query` 查该包有没有被授予 **scope 20032**，返回 `scopeInfos=[]` → `-300 scope mismatch` → `onAuthFailed` → `removeByKey`，通知被撤下降级成普通通知。
+>
+> **不是用户可开的开关，也不是本地白名单，是服务端在线鉴权且绑正式签名。** `hasFocusPermission()` 在 HyperOS 3 上反射枚举不到，原先那条线索作废。三条绕行都实测排除：改发送姿势（param 都完整到达）、写 `secure` 的 `focus_notifs` 列表、冒充已授权应用的包名（安装阶段就被签名核验拦掉）。
+>
+> **本规格影响**：路径 B（`miui.focus.param`）整条删除，5.5 只做路径 A（标准 `ProgressStyle`）+ 路径 C（普通通知兜底），**工时 7 天 → 4 天**。小米机型上这项功能只是一条普通进度通知。
+>
+> **顺带查出一条新的**：`canPostPromotedNotifications()` 在实测机上返回 **false** —— 这是 Android 16 的 per-app 用户开关，默认关。关着时 `ProgressStyle` + `FLAG_PROMOTED_ONGOING` 发得出但不提升。见 `pending-decisions.md` 的 D13。
+
+以下为决策前的原始分析，留档。
+
+### C1（原文）· 小米超级岛是否接受本地通知驱动
 
 **现状**：规格按「接受」写的（路径 B 挂在本地通知的 `extras` 上）。
 

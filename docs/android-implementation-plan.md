@@ -105,7 +105,7 @@
 | 5.2 | 防截屏（与 iOS 一致） | 3.5 天 | 中 | `SurfaceView.setSecure(true)`。屏幕正常显示、截图与录屏为空。**必须在附加到 window 前设置**，所以设置里切换开关需要重建 View 层级；Compose 侧要用 `AndroidView` 包装并自己处理圆角与 z-order |
 | 5.3 | 桌面 Widget（Glance） | 7 天 | 中 | 三种尺寸 + 交互按钮；电量环、渐变进度条需变通 |
 | 5.4 | 后台定时刷新 | 3 天 | 中 | 自适应间隔（充电 15 / 使用中 20 / 空闲 30 分钟）直接搬 |
-| 5.5 | 充电实时活动 | 7 天 | 中 | 前台服务本地轮询驱动；先做标准 `ProgressStyle`（OPPO ColorOS 16 直接吃），再看小米超级岛认不认本地通知 |
+| 5.5 | 充电实时活动 | **4 天** | 中 | 前台服务本地轮询驱动 + 标准 `Notification.ProgressStyle`（OPPO ColorOS 16 原生吃）。**小米超级岛已实测判定不可做，砍掉**（C1，见 [探针报告](./hyperos3-island-probe-report.md)）。注意 `canPostPromotedNotifications()` 默认 false，要做引导 |
 | 5.6 | 应用快捷方式 | 1 天 | 低 | 长按图标的快捷入口 |
 
 ---
