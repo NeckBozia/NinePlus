@@ -2726,8 +2726,8 @@ private struct TripTrendView: View {
     var snapshot: NinebotVehicleSnapshot
     var recordedRides: [NinebotRecordedRide]
 
-    private var analysis: TripTrendAnalysis {
-        TripTrendAnalysis(snapshot: snapshot, recordedRides: recordedRides)
+    private var analysis: NinebotTripTrend {
+        NinebotTripTrend(snapshot: snapshot, recordedRides: recordedRides)
     }
 
     var body: some View {
@@ -2799,7 +2799,7 @@ private struct TripTrendRangeModelCard: View {
 
 private struct TripTrendHeroCard: View {
     var snapshot: NinebotVehicleSnapshot
-    var analysis: TripTrendAnalysis
+    var analysis: NinebotTripTrend
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -2950,7 +2950,7 @@ private struct TripTrendDailyCard: View {
 }
 
 private struct TripTrendRideCard: View {
-    var analysis: TripTrendAnalysis
+    var analysis: NinebotTripTrend
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -2992,7 +2992,7 @@ private struct TripTrendRideCard: View {
 }
 
 private struct TripTrendInsightCard: View {
-    var analysis: TripTrendAnalysis
+    var analysis: NinebotTripTrend
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -3001,7 +3001,7 @@ private struct TripTrendInsightCard: View {
                 .foregroundStyle(Color.teslaPrimaryText)
 
             VStack(alignment: .leading, spacing: 9) {
-                ForEach(analysis.insights, id: \.self) { insight in
+                ForEach(analysis.insightTexts, id: \.self) { insight in
                     Label(insight, systemImage: "sparkle.magnifyingglass")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(Color.teslaSecondaryText)
@@ -3156,82 +3156,12 @@ private struct EmptyTrendState: View {
     }
 }
 
-private struct TripTrendAnalysis {
-    var snapshot: NinebotVehicleSnapshot
-    var recordedRides: [NinebotRecordedRide]
-
-    var dailyRecords: [NinebotDailyMileageRecord] {
-        snapshot.state.dailyMileages.sorted {
-            if let left = $0.date, let right = $1.date {
-                return left < right
-            }
-            return $0.day < $1.day
-        }
-    }
-
-    var rides: [NinebotRideRecord] {
-        snapshot.state.rides
-    }
-
-    var recentRides: [NinebotRideRecord] {
-        Array(rides.prefix(8))
-    }
-
-    var rideCount: Int {
-        rides.count
-    }
-
-    var activeDayCount: Int {
-        dailyRecords.count
-    }
-
-    var monthMileage: Double? {
-        if let monthMileage = snapshot.state.monthMileage {
-            return monthMileage
-        }
-        guard !dailyRecords.isEmpty else { return nil }
-        return dailyRecords.reduce(0) { $0 + $1.mileage }
-    }
-
-    var averageDailyMileage: Double? {
-        guard let monthMileage, !dailyRecords.isEmpty else { return nil }
-        return monthMileage / Double(dailyRecords.count)
-    }
-
-    var averageSpeed: Double? {
-        let samples = rides.compactMap(\.speed).filter { $0 > 0 }
-        guard !samples.isEmpty else { return nil }
-        return samples.reduce(0, +) / Double(samples.count)
-    }
-
-    var averageUsedElectricity: Double? {
-        let samples = rides.compactMap(\.usedElectricity).filter { $0 > 0 }
-        guard !samples.isEmpty else { return nil }
-        return samples.reduce(0, +) / Double(samples.count)
-    }
-
-    var peakRideMileage: Double? {
-        rides.compactMap(\.mileage).max()
-    }
-
-    var energyPerKm: Double? {
-        if let monthMileage, monthMileage > 0,
-           let energy = snapshot.state.monthUsedElectricity ?? snapshot.state.monthEnergy {
-            return energy / monthMileage
-        }
-
-        let samples = rides.compactMap { ride -> Double? in
-            guard let mileage = ride.mileage, mileage > 0,
-                  let energy = ride.energy, energy > 0 else { return nil }
-            return energy / mileage
-        }
-        guard !samples.isEmpty else { return nil }
-        return samples.reduce(0, +) / Double(samples.count)
-    }
-
+// Numbers and rules live in Shared/NinebotTripTrend.swift.  What stays here is
+// how they read on screen.
+private extension NinebotTripTrend {
     var energyPerKmText: String {
         guard let energyPerKm else { return "-- Wh/km" }
-        return "\(formatNumber(energyPerKm, unit: " Wh/km", maximumFractionDigits: 1))"
+        return formatNumber(energyPerKm, unit: " Wh/km", maximumFractionDigits: 1)
     }
 
     var energyPerKmShortText: String {
@@ -3239,34 +3169,27 @@ private struct TripTrendAnalysis {
         return formatNumber(energyPerKm, unit: "", maximumFractionDigits: 1)
     }
 
-    var insights: [String] {
-        var result: [String] = []
+    var insightTexts: [String] {
+        insights.map(\.text)
+    }
+}
 
-        if let peak = peakRideMileage, let averageDailyMileage, peak > averageDailyMileage * 1.8 {
-            result.append("有长距离单次骑行，续航预估会更依赖最近行程样本。")
+private extension NinebotTripInsight {
+    var text: String {
+        switch self {
+        case .longRideDominates:
+            return "有长距离单次骑行，续航预估会更依赖最近行程样本。"
+        case .highAverageElectricity:
+            return "最近单次平均用电偏高，可以关注胎压、载重和急加速。"
+        case .highEnergyPerKm:
+            return "单公里耗电偏高，后续可以结合温度和速度继续校准。"
+        case .fewRangeSamples:
+            return "有效续航样本还不多，多记录几次后准确率会更稳定。"
+        case .unlinkedLocalRides:
+            return "有本地记录尚未关联接口行程，关联后趋势会更完整。"
+        case .normal:
+            return "当前趋势正常，继续积累行程后可以看到更稳定的变化。"
         }
-
-        if let averageUsedElectricity, averageUsedElectricity > 12 {
-            result.append("最近单次平均用电偏高，可以关注胎压、载重和急加速。")
-        }
-
-        if let energyPerKm, energyPerKm > 35 {
-            result.append("单公里耗电偏高，后续可以结合温度和速度继续校准。")
-        }
-
-        if snapshot.state.observedRangeSampleCount < 5 {
-            result.append("有效续航样本还不多，多记录几次后准确率会更稳定。")
-        }
-
-        if recordedRides.contains(where: { $0.associatedRideID == nil }) {
-            result.append("有本地记录尚未关联接口行程，关联后趋势会更完整。")
-        }
-
-        if result.isEmpty {
-            result.append("当前趋势正常，继续积累行程后可以看到更稳定的变化。")
-        }
-
-        return result
     }
 }
 
