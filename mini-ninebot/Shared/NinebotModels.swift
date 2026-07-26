@@ -1288,15 +1288,16 @@ struct NinebotVehicleState: Codable, Equatable {
     }
 
     var rangeEstimateAccuracyDetailText: String {
-        if let serverCount = serverPrediction?.range.sampleCount,
-           serverCount > 0 {
-            if serverPrediction?.range.accuracySource == "measured" {
-                let verifiedCount = serverPrediction?.range.measuredSampleCount ?? serverCount
-                return "实测预测误差 · \(verifiedCount) 次已验证行程"
-            }
-            return "算法服务端 · \(serverCount) 次有效行程"
+        switch rangeAccuracyDetail {
+        case .measured(let verifiedCount):
+            return "实测预测误差 · \(verifiedCount) 次已验证行程"
+        case .algorithmic(let sampleCount):
+            return "算法服务端 · \(sampleCount) 次有效行程"
+        case .insufficientSamples:
+            return "服务端样本不足"
+        case .noPrediction:
+            return "服务端未返回算法指标"
         }
-        return serverPrediction == nil ? "服务端未返回算法指标" : "服务端样本不足"
     }
 
     var rangeModelSummaryText: String {
@@ -1305,19 +1306,18 @@ struct NinebotVehicleState: Codable, Equatable {
     }
 
     var rangeModelInsightText: String {
-        if usesServerAlgorithmEstimate {
-            if serverPrediction?.range.source == "default" {
-                return "服务端样本不足，当前使用默认算法估算。"
-            }
-            if let accuracy = rangeEstimateAccuracy, accuracy >= 0.82 {
-                return "服务端近期样本稳定，估算可信。"
-            }
+        switch rangeEstimateQuality {
+        case .serverDefault:
+            return "服务端样本不足，当前使用默认算法估算。"
+        case .serverConfident:
+            return "服务端近期样本稳定，估算可信。"
+        case .serverCalibrating:
             return "服务端已根据近期行程持续校准。"
-        }
-        if serverPrediction != nil {
+        case .serverUnavailable:
             return "服务端未给出可用算法续航，当前显示官方预估。"
+        case .missing:
+            return "服务端未返回算法预测，当前显示官方预估。"
         }
-        return "服务端未返回算法预测，当前显示官方预估。"
     }
 
     var localEstimatedMileage: Double? {
@@ -1352,18 +1352,14 @@ struct NinebotVehicleState: Codable, Equatable {
     }
 
     var localEstimateBasisText: String {
-        if let prediction = serverPrediction,
-           let estimatedRange = prediction.range.estimatedRange,
-           estimatedRange >= 0 {
-            let sampleText = prediction.range.sampleCount.map { "\($0) 次有效行程" } ?? "历史样本"
-            switch prediction.range.source ?? "" {
-            case "personalized", "personalized_blend":
-                return "算法服务端结合官方预估和 \(sampleText) 持续校准。"
-            default:
-                return "服务端默认算法基于 \(sampleText) 计算。"
-            }
+        switch localEstimateBasis {
+        case .personalized(let sampleCount):
+            return "算法服务端结合官方预估和 \(Self.sampleText(sampleCount)) 持续校准。"
+        case .serverDefault(let sampleCount):
+            return "服务端默认算法基于 \(Self.sampleText(sampleCount)) 计算。"
+        case .missing:
+            return "服务端未返回算法预测，当前显示官方预估。"
         }
-        return "服务端未返回算法预测，当前显示官方预估。"
     }
 
     var monthEnergyPerKm: Double? {
@@ -1530,6 +1526,10 @@ struct NinebotVehicleState: Codable, Equatable {
         return warnings
     }
 
+    private static func sampleText(_ count: Int?) -> String {
+        count.map { "\($0) 次有效行程" } ?? "历史样本"
+    }
+
     private static let decimalFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.maximumFractionDigits = 1
@@ -1595,13 +1595,6 @@ struct NinebotVehicleState: Codable, Equatable {
         officialEstimatedMileage
     }
 
-    private var usesServerAlgorithmEstimate: Bool {
-        guard let estimatedRange = serverPrediction?.range.estimatedRange,
-              estimatedRange >= 0 else {
-            return false
-        }
-        return true
-    }
 
     private var defaultObservedKmPerBatteryPercent: Double? {
         let samples = observedRangeSamples
