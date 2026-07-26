@@ -122,6 +122,7 @@ struct NinebotDiagnosticsSnapshot {
     var rideDetailCount: Int
     var resolvedAddressCount: Int
     var dashboardCacheBytes: Int
+    var recordedTrackBytes: Int
 }
 
 @MainActor
@@ -413,6 +414,12 @@ final class NinebotViewModel: ObservableObject {
         }
     }
 
+    /// Loads a ride's track points on demand.  List rows only ever hold
+    /// summaries, so anything that draws a track has to ask for the full record.
+    func recordedRideWithTrack(id: String) -> NinebotRecordedRide? {
+        store.loadRecordedRide(id: id)
+    }
+
     func recordedRide(associatedWith rideID: String, vehicleSN: String?) -> NinebotRecordedRide? {
         recordedRides.first { ride in
             ride.associatedRideID == rideID && (vehicleSN == nil || ride.vehicleSN == nil || ride.vehicleSN == vehicleSN)
@@ -499,7 +506,8 @@ final class NinebotViewModel: ObservableObject {
             recordedRideCount: store.recordedRideCount(),
             rideDetailCount: rideDetails.count,
             resolvedAddressCount: resolvedAddresses.count,
-            dashboardCacheBytes: store.storedDashboardByteCount()
+            dashboardCacheBytes: store.storedDashboardByteCount(),
+            recordedTrackBytes: store.recordedTrackByteCount()
         )
     }
 

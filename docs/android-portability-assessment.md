@@ -97,12 +97,10 @@
 7. 地图接入
 8. 实时活动降级为进度通知，锁屏 Widget 与语音入口做产品降级
 
-## 附：项目现状中值得注意的问题
+## 附：项目现状
 
-这些不是移植障碍，但两端都应修：
-
-- 登录态、手机号、Bearer Token 以明文存在 `UserDefaults`（`NinebotSharedStore.swift:184-187`），没有用 Keychain。Android 侧建议直接上 EncryptedSharedPreferences 或 Keystore。
-- 轨迹点全量 JSON 存进 `UserDefaults`，长途骑行会产生数 MB 的 plist。Android 侧建议直接用 Room 绕开这个隐患。
-- `NSAllowsArbitraryLoads = true`，说明服务端可能是 HTTP 或自签证书。Android 需要配 `network_security_config.xml`。
-- 无单元测试、无 CI。
-- 部署目标 iOS 26.5，但代码里的 `@available` 下限实际只到 iOS 18。Android 侧可以同样激进（minSdk 33/34），省掉大量兼容分支。
+- **轨迹存储**：原先把全部轨迹点 JSON 塞进 `UserDefaults`，长途骑行会产生数 MB 的 plist。已改为「摘要存 defaults + 每条骑行一个轨迹文件，按需加载」，含旧数据自动迁移。Android 侧建议直接上 Room 一步到位。
+- **凭证明文存储**：登录态、手机号、Bearer Token 明文存在 `UserDefaults`（`NinebotSharedStore.swift:184-187`），未用 Keychain。**已确认为可接受的取舍**（个人自建、单用户场景），Android 侧保持一致即可，不必强上 EncryptedSharedPreferences。
+- **测试与 CI**：已补上 `Package.swift` + 单元测试 + GitHub Actions，覆盖 `Shared/` 下的平台无关层。UI 层和 Widget 仍无测试。
+- `NSAllowsArbitraryLoads = true`，说明服务端可能是 HTTP 或自签证书。Android 需要配 `network_security_config.xml`；更好的做法是服务端直接上 Let's Encrypt。
+- 部署目标 iOS 26.5，但代码里的 `@available` 下限实际只到 iOS 18。Android 侧可以同样激进（minSdk 33），省掉大量兼容分支。

@@ -867,6 +867,10 @@ struct NinebotRecordedRide: Codable, Equatable, Identifiable {
     var averageSpeedKmh: Double
     var maxAccelerationG: Double
     var points: [NinebotRideTrackPoint]
+    // Track points live in their own file, so a summary loaded for a list row
+    // carries the count without the points themselves.  Optional to stay
+    // decodable against records written before the split.
+    var pointCount: Int?
 
     init(
         id: String = UUID().uuidString,
@@ -878,7 +882,8 @@ struct NinebotRecordedRide: Codable, Equatable, Identifiable {
         maxSpeedKmh: Double,
         averageSpeedKmh: Double,
         maxAccelerationG: Double,
-        points: [NinebotRideTrackPoint]
+        points: [NinebotRideTrackPoint],
+        pointCount: Int? = nil
     ) {
         self.id = id
         self.vehicleSN = vehicleSN
@@ -890,10 +895,41 @@ struct NinebotRecordedRide: Codable, Equatable, Identifiable {
         self.averageSpeedKmh = averageSpeedKmh
         self.maxAccelerationG = maxAccelerationG
         self.points = points
+        self.pointCount = pointCount ?? points.count
     }
 
     var durationSeconds: TimeInterval {
         max(endedAt.timeIntervalSince(startedAt), 0)
+    }
+
+    /// Number of recorded track points, available without loading the track.
+    var trackPointCount: Int {
+        pointCount ?? points.count
+    }
+
+    /// A summary carries no points; anything that draws the track must load it first.
+    var isTrackLoaded: Bool {
+        !points.isEmpty || trackPointCount == 0
+    }
+
+    /// Summary form persisted alongside the other records.  `distanceMeters` is
+    /// frozen to the recalculated value so a summary reports the same distance
+    /// the full record would.
+    func trackSummary() -> NinebotRecordedRide {
+        var summary = self
+        summary.distanceMeters = displayDistanceMeters
+        // Summarising an already-summarised record must not report zero points
+        // just because the track is not currently in memory.
+        summary.pointCount = points.isEmpty ? trackPointCount : points.count
+        summary.points = []
+        return summary
+    }
+
+    func withTrack(_ points: [NinebotRideTrackPoint]) -> NinebotRecordedRide {
+        var record = self
+        record.points = points
+        record.pointCount = points.isEmpty ? trackPointCount : points.count
+        return record
     }
 
     var distanceKilometers: Double {

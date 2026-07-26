@@ -1076,14 +1076,21 @@ private struct RecordedRideDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isConfirmingDeletion = false
     @State private var copiedMessage: String?
+    @State private var loadedRecord: NinebotRecordedRide?
+
+    // List rows carry summaries only; the track is read from disk on open.
+    private var detailRecord: NinebotRecordedRide {
+        loadedRecord ?? record
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                RecordedRideDetailHero(record: record)
-                RecordedRideTrackMap(record: record)
-                RecordedRideDetailMetrics(record: record)
-                RecordedRideExportCard(record: record, copiedMessage: $copiedMessage)
+                RecordedRideDetailHero(record: detailRecord)
+                RecordedRideTrackMap(record: detailRecord)
+                    .id(detailRecord.points.count)
+                RecordedRideDetailMetrics(record: detailRecord)
+                RecordedRideExportCard(record: detailRecord, copiedMessage: $copiedMessage)
 
                 if let associatedRideID = record.associatedRideID {
                     VStack(alignment: .leading, spacing: 8) {
@@ -1124,6 +1131,10 @@ private struct RecordedRideDetailView: View {
         .background(Color.teslaPageBackground.ignoresSafeArea())
         .navigationTitle("记录详情")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: record.id) {
+            guard !record.isTrackLoaded else { return }
+            loadedRecord = NinebotSharedStore().loadRecordedRide(id: record.id)
+        }
         .overlay(alignment: .top) {
             if let copiedMessage {
                 Text(copiedMessage)
@@ -1213,7 +1224,7 @@ private struct RecordedRideTrackMap: View {
                     .font(.headline)
                     .foregroundStyle(Color.teslaPrimaryText)
                 Spacer()
-                Text("\(record.points.count) 点")
+                Text("\(record.trackPointCount) 点")
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(Color.teslaSecondaryText)
             }
@@ -1347,7 +1358,7 @@ private struct RecordedRideDetailMetrics: View {
             RecordingDetailMetric(title: "均速", value: formatRecordingSpeed(record.averageSpeedKmh), systemImage: "speedometer", tint: Color.teslaGreen)
             RecordingDetailMetric(title: "最快", value: formatRecordingSpeed(record.maxSpeedKmh), systemImage: "gauge.with.dots.needle.67percent", tint: .yellow)
             RecordingDetailMetric(title: "最大 G", value: formatRecordingG(record.maxAccelerationG), systemImage: "bolt.circle.fill", tint: .red)
-            RecordingDetailMetric(title: "轨迹点", value: "\(record.points.count) 个", systemImage: "point.3.connected.trianglepath.dotted", tint: Color.teslaGreen)
+            RecordingDetailMetric(title: "轨迹点", value: "\(record.trackPointCount) 个", systemImage: "point.3.connected.trianglepath.dotted", tint: Color.teslaGreen)
             RecordingDetailMetric(title: "关联", value: record.associatedRideID == nil ? "未关联" : "已关联", systemImage: "link", tint: record.associatedRideID == nil ? Color.teslaSecondaryText : Color.teslaGreen)
         }
     }

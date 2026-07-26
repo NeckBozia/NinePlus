@@ -4190,14 +4190,21 @@ private struct NinebotRideDetailView: View {
     var vehicleSN: String?
     var record: NinebotRideRecord
     var localRecord: NinebotRecordedRide?
+    @State private var loadedLocalRecord: NinebotRecordedRide?
+
+    // The associated record arrives as a summary; its track is read on open.
+    private var detailLocalRecord: NinebotRecordedRide? {
+        loadedLocalRecord ?? localRecord
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                RideDetailHero(record: effectiveRecord, localRecord: localRecord)
+                RideDetailHero(record: effectiveRecord, localRecord: detailLocalRecord)
 
-                if let localRecord {
+                if let localRecord = detailLocalRecord {
                     RideTrackMapPanel(record: localRecord)
+                        .id(localRecord.points.count)
                 } else if !interfaceTrackPoints.isEmpty {
                     InterfaceRideTrackMapPanel(points: interfaceTrackPoints)
                 }
@@ -4222,8 +4229,14 @@ private struct NinebotRideDetailView: View {
         .navigationTitle("行程详情")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: "\(vehicleSN ?? "")|\(record.id)") {
+            loadLocalTrackIfNeeded()
             await loadRemoteDetailIfNeeded()
         }
+    }
+
+    private func loadLocalTrackIfNeeded() {
+        guard let localRecord, !localRecord.isTrackLoaded else { return }
+        loadedLocalRecord = NinebotSharedStore().loadRecordedRide(id: localRecord.id)
     }
 
     private var canLoadRemoteDetail: Bool {
@@ -4328,7 +4341,7 @@ private struct RideDetailHero: View {
             result.append(contentsOf: [
                 RideDisplayMetric(title: "本地极速", value: formatSpeed(localRecord.maxSpeedKmh), systemImage: "gauge.with.dots.needle.67percent"),
                 RideDisplayMetric(title: "最大 G", value: formatAccelerationG(localRecord.maxAccelerationG), systemImage: "bolt.circle.fill"),
-                RideDisplayMetric(title: "轨迹点", value: "\(localRecord.points.count) 个", systemImage: "point.3.connected.trianglepath.dotted")
+                RideDisplayMetric(title: "轨迹点", value: "\(localRecord.trackPointCount) 个", systemImage: "point.3.connected.trianglepath.dotted")
             ])
         }
 
