@@ -152,6 +152,25 @@
 - **备份**：`accounts.json` 和 ninecli 的 `tokens.json` 丢了要重新登录换令牌；行程历史是长期积累的，配置定期备份。
 - **监控**：`/healthz` 接了就用上，配个简单的掉线告警。注意它现在在鉴权之前，只能测「进程活着」，测不了「Token 对不对」。
 
+### `ninecli` 的封堵（审计结论落地）
+
+`ninecli` 已做过安全审计（[ninecli-security-audit.md](./ninecli-security-audit.md)），结论是可以用，但**代理层域名白名单不是可选项** —— 那个二进制有 5 个命令行开关能把凭据发往任意主机。两个硬条件见 `pending-decisions.md` 的 D14。
+
+部署到社区适配器上时有一条具体的好消息：适配器调 ninecli 用的是 `subprocess.run(command, …)`，**没有传 `env=`，所以子进程继承整个 `os.environ`**（`server.py:238`）。也就是说 **在容器上设 `HTTPS_PROXY` / `HTTP_PROXY` / `SSL_CERT_FILE`，ninecli 会自动照做** —— 审计实测它遵循这些变量、100% 流量经代理、零绕过尝试。不需要改一行适配器代码。
+
+分两层，缺一不可：
+
+| 层 | 判定依据 | 为什么必须是这一层 |
+| --- | --- | --- |
+| 域名白名单（代理，CONNECT 直通） | 主机名 | **只有这一层看得见主机名**。nftables 匹配 IP，而这 5 个主机在 CDN 后面、IP 会轮换，写死 IP 的白名单几周内就开始误杀，而误杀日志和真实告警形态完全一样 —— 规则腐烂之后，当初装它要拿的那条信号反而先失效 |
+| 网络默认拒绝 | uid + 目的地址 | 让绕过代理**不可能**，而不只是不推荐。DNS 也要拒绝（由代理代为解析），直接消掉 DNS 隧道外传通道 |
+
+白名单正则**两端锚定**，否则 `ebike.ninebot.com.attacker.example` 这类后缀伪装会让白名单退化成放行名单。
+
+Docker 变体用 Docker 自己的 `internal: true` 网络做出网边界，**不要手写防火墙规则** —— Docker 生成的规则先执行，手写 nftables 在 Docker 宿主上经常被静默旁路，看着装上了实际什么也没拦。配合非 root、`read_only` 根文件系统、`cap_drop: ALL`、`no-new-privileges`、唯一可写路径是令牌卷。
+
+**这套笼子的长期价值不在装的那一天，在于它常驻。** 一次性审计抓不到定时触发的载荷，只有常驻的默认拒绝规则能在它某天想连别处时留下带日期的痕迹。所以每次 `pip install -U ninecli` 之后要重算二进制 sha256、重跑验证脚本、用 `go version -m` 重新比对依赖清单。
+
 ---
 
 ## 三 · 小米超级岛与厂商实时活动
