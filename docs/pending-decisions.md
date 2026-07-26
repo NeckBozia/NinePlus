@@ -212,14 +212,34 @@
 
 **现状**：已定用社区适配器（平台模式），并 fork 自己改。
 
-**分歧点**：自用是单账号，`ninecli serve` 本身就是一个能跑的服务端，**少一层**。少这一层意味着少掉「每个请求 fork 一个 Go 进程」那套开销（ninecli 自己常驻），也不需要维护 fork。
+**两种模式的端点差异（逐条比对两个分支的客户端得出）**：车辆相关的端点**完全相同**，只有登录不一样。
 
-代价有三条：
-1. 端点集合由 ninecli 决定，**不一定覆盖客户端要的全部 17 个**（社区适配器是照着客户端反向对齐的，ninecli 不是）
-2. 没有多账号、没有管理后台
-3. 它还是那个闭源二进制，出问题只能绕不能修 —— 而社区适配器是 Python，能改
+| 只有平台模式有 | 在社区适配器上的实际状态 |
+| --- | --- |
+| `GET /vehicles/{sn}/dashboard` | 适配器自己拼的聚合响应（内部照样打 6+ 次 ninecli）。代理模式下客户端用 `status` + `battery` 自己拼 —— 而 iOS 在社区适配器上**本来就走这条兜底分支**（响应里没有 `state` 键） |
+| `GET /vehicles/{sn}/prediction` | 空桩，恒返回 `{}` |
+| `POST /vehicles/{sn}/prediction-settings` | 空桩，回显请求体 |
+| `POST /live-activities/register` | 兼容桩，适配器不发 APNs；而且已定不做推送 |
 
-**要做的验证**：把 `ninecli serve` 跑起来，对着 `community-server-api-check.md` 第一节那 17 个端点逐个打一遍，看命中几个。约半小时。
+| 只有代理模式有 | 说明 |
+| --- | --- |
+| `POST /auth/login`、`/auth/refresh` | 代理模式的登录与续期 |
+| `/auth/login-code`、`/accounts/login-code`（含 `/consume`） | 短信验证码登录，`main` 分支把这套砍了 |
+
+**结论就在这张表里**：那四个「只有平台模式有」的端点，在社区适配器上**没有一个是真的** —— 一个是它自己拼的，两个空桩，一个已定不做。所以走 `ninecli serve` 在功能上几乎不损失。
+
+**分歧点**：`ninecli serve` 少一层，而且它自己常驻，没有「每个请求 fork 一个 8.9 MB Go 进程」那套开销 —— 这正好是社区适配器最大的性能问题。也不需要维护 fork。
+
+代价：
+1. **没验证过 `ninecli serve` 的真实路由表**。我是从 `nine-proxy` 分支客户端发出的请求反推的（客户端就是照它写的，推断很强但不是实测）。`travel` 那三条在它上面通不通，尤其要试
+2. 默认只监听 `127.0.0.1:18009`，手机要连得改成 `0.0.0.0` 或者前面挂反向代理
+3. 没有多账号、没有管理后台
+4. 闭源二进制，出问题只能绕不能修 —— 社区适配器是 Python，能改
+5. Android 要实现代理模式的登录流程（`/auth/login` + `/auth/refresh`），参考实现在 `origin/nine-proxy` 的 `NinebotProxyClient.swift`
+
+**要做的验证**：跑起来，先打 `/auth/login`，再逐个打车辆端点（`vehicles`、`status`、`battery`、`travel`、`travel/{id}`、四个控制指令）。约半小时。
+
+**还有第三个选项**：两个都用 —— `ninecli serve` 打底，社区适配器只在它确实缺东西时补。不过多一层部署，除非验证发现它缺得厉害，否则没必要。
 
 **决定时机**：Phase 0 开工前，和 V1–V10 那批实测一起做。它决定 Android 侧对齐哪一套端点。
 
