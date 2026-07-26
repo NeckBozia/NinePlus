@@ -267,11 +267,11 @@ private enum NinebotShortcutRunner {
             let cached = store.loadDashboard()
             let dashboard = try await client.fetchDashboard(selectedSN: cached?.selectedSN)
             let archivedDashboard = saveDashboardAndSync(dashboard, store: store)
-            recordShortcutEvent(store: store, startedAt: startedAt, operation: "刷新车况", success: true, message: archivedDashboard.primaryVehicle?.vehicle.name)
+            recordShortcutEvent(store: store, startedAt: startedAt, operation: .dashboard, success: true, message: archivedDashboard.primaryVehicle?.vehicle.name)
             WidgetCenter.shared.reloadAllTimelines()
             return archivedDashboard.primaryVehicle?.vehicle.name ?? "九号"
         } catch {
-            recordShortcutEvent(store: store, startedAt: startedAt, operation: "刷新车况", success: false, message: error.localizedDescription)
+            recordShortcutEvent(store: store, startedAt: startedAt, operation: .dashboard, success: false, message: error.localizedDescription)
             throw error
         }
     }
@@ -285,11 +285,11 @@ private enum NinebotShortcutRunner {
                 throw NinebotShortcutError.missingVehicle
             }
             let text = "\(snapshot.vehicle.name) 当前电量 \(snapshot.state.batteryText)，预估续航 \(snapshot.state.localEstimatedMileageText)，状态 \(snapshot.state.powerText)。"
-            recordShortcutEvent(store: store, startedAt: startedAt, operation: "查询电量", success: true, message: snapshot.vehicle.name)
+            recordShortcutEvent(store: store, startedAt: startedAt, operation: .batteryQuery, success: true, message: snapshot.vehicle.name)
             WidgetCenter.shared.reloadAllTimelines()
             return text
         } catch {
-            recordShortcutEvent(store: store, startedAt: startedAt, operation: "查询电量", success: false, message: error.localizedDescription)
+            recordShortcutEvent(store: store, startedAt: startedAt, operation: .batteryQuery, success: false, message: error.localizedDescription)
             throw error
         }
     }
@@ -312,11 +312,11 @@ private enum NinebotShortcutRunner {
                 locationText = "暂无位置"
             }
             let text = "\(snapshot.vehicle.name) 位置：\(locationText)。更新于 \(shortcutTime(snapshot.state.updatedAt))。"
-            recordShortcutEvent(store: store, startedAt: startedAt, operation: "查询位置", success: true, message: snapshot.vehicle.name)
+            recordShortcutEvent(store: store, startedAt: startedAt, operation: .locationQuery, success: true, message: snapshot.vehicle.name)
             WidgetCenter.shared.reloadAllTimelines()
             return text
         } catch {
-            recordShortcutEvent(store: store, startedAt: startedAt, operation: "查询位置", success: false, message: error.localizedDescription)
+            recordShortcutEvent(store: store, startedAt: startedAt, operation: .locationQuery, success: false, message: error.localizedDescription)
             throw error
         }
     }
@@ -344,11 +344,11 @@ private enum NinebotShortcutRunner {
 
             let refreshed = try await client.fetchDashboard(selectedSN: vehicle.sn)
             _ = saveDashboardAndSync(refreshed, store: store)
-            recordShortcutEvent(store: store, startedAt: startedAt, operation: action.title, success: true, message: vehicle.name)
+            recordShortcutEvent(store: store, startedAt: startedAt, operation: action.refreshOperation, success: true, message: vehicle.name)
             WidgetCenter.shared.reloadAllTimelines()
             return vehicle.name
         } catch {
-            recordShortcutEvent(store: store, startedAt: startedAt, operation: action.title, success: false, message: error.localizedDescription)
+            recordShortcutEvent(store: store, startedAt: startedAt, operation: action.refreshOperation, success: false, message: error.localizedDescription)
             throw error
         }
     }
@@ -398,12 +398,12 @@ private enum NinebotShortcutRunner {
     private static func recordShortcutEvent(
         store: NinebotSharedStore,
         startedAt: Date,
-        operation: String,
+        operation: NinebotRefreshOperation,
         success: Bool,
         message: String?
     ) {
         store.saveLastAppRefreshEvent(NinebotRefreshEvent(
-            source: "Shortcut",
+            source: .shortcut,
             operation: operation,
             startedAt: startedAt,
             endedAt: Date(),

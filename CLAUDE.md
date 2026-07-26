@@ -34,14 +34,15 @@
 - 诊断中心拿 `accountText == "未绑定账号"` 判断有没有绑定账号 → 改成 `isAccountBound: Bool`
 - 车辆按带中文后缀的显示串分组 → 改成 `NinebotVehicleAccount` 枚举
 - 告警和洞察用中文串当列表身份 → 改成枚举，文案挪到界面层
+- 诊断事件把中文 `operation` 写进 `UserDefaults` → 改成 `NinebotRefreshOperation`，落盘是 ASCII
 
 **做法**：领域层出枚举（rawValue 用 ASCII），界面层用一个 `private extension` 把枚举映射成文案。`NinebotTripInsight`、`NinebotVehicleWarning`、`NinebotChargingStatus` 都是这个形状，照着写。
 
-完整清单见 [`docs/移植可行性研究/string-extraction-inventory.md`](./docs/移植可行性研究/string-extraction-inventory.md)，还有 146 处没改完。
+完整清单见 [`docs/移植可行性研究/string-extraction-inventory.md`](./docs/移植可行性研究/string-extraction-inventory.md)。B1/B2/B3 已修，剩下的主要是 B4（会落盘的文案定义点）和 B5（Siri 短语，已定不做）。
 
 ## 改动前先看这两处
 
-- **待拍板的事** —— [`docs/移植可行性研究/pending-decisions.md`](./docs/移植可行性研究/pending-decisions.md)。D1–D13 是跨阶段的通用决策，后面按区域前缀分（T 行程 / P 传感器 / R 轨迹 / W Widget / C 充电岛 / S 系统 / I 图标 / A 服务端 / L 文案 / V 实测）。**不要替用户做产品决策**，遇到分歧写进这份文档。
+- **待拍板的事** —— [`docs/移植可行性研究/pending-decisions.md`](./docs/移植可行性研究/pending-decisions.md)。D1–D14 是跨阶段的通用决策，后面按区域前缀分（T 行程 / P 传感器 / R 轨迹 / W Widget / C 充电岛 / S 系统 / I 图标 / A 服务端 / L 文案 / V 实测）。**不要替用户做产品决策**，遇到分歧写进这份文档。
 - **实现规格** —— `docs/移植可行性研究/phase0-foundation-spec.md` 到 `docs/移植可行性研究/phase5-system-spec.md` 共八份。
 
 ## 两条 CI 门禁都会拦
@@ -57,7 +58,7 @@
 
 ## 测试
 
-- 383 个单元测试在 `Tests/NineBotCoreTests/`，只覆盖 `Shared/` 下的平台无关层
+- 408 个单元测试在 `Tests/NineBotCoreTests/`，只覆盖 `Shared/` 下的平台无关层
 - 抽取领域逻辑时**顺手补测试**，抽取的意义之一就是让原本 private 的东西可测
 - 发现 iOS 现有行为可疑时，**先用测试把现状钉住再说**，不要顺手改。改不改是产品决策（例：D9、D11）
 

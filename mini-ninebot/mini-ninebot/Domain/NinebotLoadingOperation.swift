@@ -10,7 +10,9 @@ enum NinebotLoadingOperation: Equatable {
     case testConnection
     case refreshDashboard
     case updateBatteryChemistry(NinebotBatteryChemistry)
-    case syncTravelMonth(String)
+    /// - Parameter month: raw `yyyyMM`. Keeping it unformatted is what lets
+    ///   `refreshOperation` persist it without dragging Chinese onto disk.
+    case syncTravelMonth(month: String)
     case resolveAddresses
     case enableChargingNotifications
     case syncPushDeviceToken
@@ -27,8 +29,8 @@ enum NinebotLoadingOperation: Equatable {
             return "正在刷新车况"
         case .updateBatteryChemistry:
             return "正在更新电池类型"
-        case .syncTravelMonth(let displayMonth):
-            return "正在获取 \(displayMonth) 行程"
+        case .syncTravelMonth(let month):
+            return "正在获取 \(Self.displayMonth(month)) 行程"
         case .resolveAddresses:
             return "正在解析车辆位置"
         case .enableChargingNotifications:
@@ -40,6 +42,13 @@ enum NinebotLoadingOperation: Equatable {
         case .vehicleAction(let action):
             return action.loadingTitle
         }
+    }
+
+    /// `yyyyMM` as a person reads it. Lives here rather than on the view model
+    /// so the enum can carry the raw month and still produce its own wording.
+    static func displayMonth(_ month: String) -> String {
+        guard month.count == 6 else { return month }
+        return "\(month.prefix(4))年\(month.suffix(2))月"
     }
 
     /// Whether the dashboard's pull-to-refresh indicator should be showing.
@@ -54,6 +63,37 @@ enum NinebotLoadingOperation: Equatable {
         case .testConnection, .updateBatteryChemistry, .syncTravelMonth,
              .enableChargingNotifications, .syncPushDeviceToken, .login, .vehicleAction:
             return false
+        }
+    }
+}
+
+extension NinebotLoadingOperation {
+    /// The ASCII identity recorded in the diagnostics log.
+    ///
+    /// Deliberately separate from `message`: that one is wording and may be
+    /// reworded freely, this one is a persisted value and must not change.
+    var refreshOperation: NinebotRefreshOperation {
+        switch self {
+        case .testConnection: return .testConnection
+        case .refreshDashboard: return .dashboard
+        case .updateBatteryChemistry(let chemistry): return .batteryChemistryUpdate(chemistry.rawValue)
+        case .syncTravelMonth(let month): return .travelMonthSync(month)
+        case .resolveAddresses: return .addressResolve
+        case .enableChargingNotifications: return .chargingNotificationsEnable
+        case .syncPushDeviceToken: return .pushTokenSync
+        case .login: return .login
+        case .vehicleAction(let action): return action.refreshOperation
+        }
+    }
+}
+
+extension NinebotVehicleAction {
+    var refreshOperation: NinebotRefreshOperation {
+        switch self {
+        case .bell: return .bell
+        case .openBucket: return .openBucket
+        case .engineStart: return .engineStart
+        case .engineStop: return .engineStop
         }
     }
 }

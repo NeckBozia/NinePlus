@@ -56,8 +56,8 @@ struct NinebotLoginResult: Codable, Equatable {
 }
 
 struct NinebotRefreshEvent: Codable, Equatable {
-    var source: String
-    var operation: String
+    var source: NinebotRefreshSource
+    var operation: NinebotRefreshOperation
     var startedAt: Date
     var endedAt: Date
     var success: Bool

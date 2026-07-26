@@ -58,8 +58,8 @@ struct NinebotTimelineProvider: TimelineProvider {
 
         guard configuration.isUsable else {
             store.saveLastWidgetRefreshEvent(NinebotRefreshEvent(
-                source: "Widget",
-                operation: "刷新小组件",
+                source: .widget,
+                operation: .widgetTimeline,
                 startedAt: startedAt,
                 endedAt: Date(),
                 success: false,
@@ -78,8 +78,8 @@ struct NinebotTimelineProvider: TimelineProvider {
                 .fetchDashboard(selectedSN: cached?.selectedSN)
             let archivedDashboard = store.saveDashboard(dashboard)
             store.saveLastWidgetRefreshEvent(NinebotRefreshEvent(
-                source: "Widget",
-                operation: "刷新小组件",
+                source: .widget,
+                operation: .widgetTimeline,
                 startedAt: startedAt,
                 endedAt: Date(),
                 success: true,
@@ -95,8 +95,8 @@ struct NinebotTimelineProvider: TimelineProvider {
             let message = error.localizedDescription
             store.saveLastError(message)
             store.saveLastWidgetRefreshEvent(NinebotRefreshEvent(
-                source: "Widget",
-                operation: "刷新小组件",
+                source: .widget,
+                operation: .widgetTimeline,
                 startedAt: startedAt,
                 endedAt: Date(),
                 success: false,

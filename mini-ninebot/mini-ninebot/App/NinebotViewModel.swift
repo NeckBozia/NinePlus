@@ -287,7 +287,7 @@ final class NinebotViewModel: ObservableObject {
     }
 
     func syncTravelMonth(vehicleSN: String, month: String) async {
-        await runLoadingOperation(.syncTravelMonth(Self.displayMonth(month))) {
+        await runLoadingOperation(.syncTravelMonth(month: month)) {
             self.syncingTravelMonth = month
             defer { self.syncingTravelMonth = nil }
 
@@ -301,9 +301,9 @@ final class NinebotViewModel: ObservableObject {
             await self.refreshResolvedAddressesIfNeeded(for: archivedDashboard)
 
             if page.total == 0 {
-                self.statusMessage = "\(Self.displayMonth(month)) 暂无行程"
+                self.statusMessage = "\(NinebotLoadingOperation.displayMonth(month)) 暂无行程"
             } else {
-                self.statusMessage = "已获取 \(Self.displayMonth(month)) \(page.total) 条行程"
+                self.statusMessage = "已获取 \(NinebotLoadingOperation.displayMonth(month)) \(page.total) 条行程"
             }
             self.errorMessage = nil
             WidgetCenter.shared.reloadAllTimelines()
@@ -672,8 +672,8 @@ final class NinebotViewModel: ObservableObject {
         do {
             try await operation()
             store.saveLastAppRefreshEvent(NinebotRefreshEvent(
-                source: "App",
-                operation: kind.message,
+                source: .app,
+                operation: kind.refreshOperation,
                 startedAt: startedAt,
                 endedAt: Date(),
                 success: true,
@@ -685,8 +685,8 @@ final class NinebotViewModel: ObservableObject {
             statusMessage = nil
             store.saveLastError(message)
             store.saveLastAppRefreshEvent(NinebotRefreshEvent(
-                source: "App",
-                operation: kind.message,
+                source: .app,
+                operation: kind.refreshOperation,
                 startedAt: startedAt,
                 endedAt: Date(),
                 success: false,
@@ -696,13 +696,6 @@ final class NinebotViewModel: ObservableObject {
 
         isLoading = false
         loadingOperation = nil
-    }
-
-    private static func displayMonth(_ month: String) -> String {
-        guard month.count == 6 else { return month }
-        let year = month.prefix(4)
-        let monthValue = month.suffix(2)
-        return "\(year)年\(monthValue)月"
     }
 
     private static let timeFormatter: DateFormatter = {

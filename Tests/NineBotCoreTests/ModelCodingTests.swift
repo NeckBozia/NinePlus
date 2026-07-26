@@ -442,8 +442,8 @@ final class ModelCodingTests: XCTestCase {
 
     func testRefreshEventDurationAndRoundTrip() throws {
         let event = NinebotRefreshEvent(
-            source: "widget",
-            operation: "refresh",
+            source: .widget,
+            operation: .dashboard,
             startedAt: referenceDate,
             endedAt: referenceDate.addingTimeInterval(2.5),
             success: true,
@@ -454,8 +454,8 @@ final class ModelCodingTests: XCTestCase {
 
         // A clock that ran backwards must never produce a negative duration.
         let reversed = NinebotRefreshEvent(
-            source: "widget",
-            operation: "refresh",
+            source: .widget,
+            operation: .dashboard,
             startedAt: referenceDate.addingTimeInterval(2.5),
             endedAt: referenceDate,
             success: false,

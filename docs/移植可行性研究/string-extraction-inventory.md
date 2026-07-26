@@ -175,7 +175,15 @@ Android 没有 `Info.plist` 的对应物，这两条会变成 App 自己画的�
 
 `insightTexts` 来自 `mini-ninebot/Shared/NinebotTripTrend.swift` 的枚举，文案在 `mini-ninebot/mini-ninebot/App/NinebotDashboardView.swift:3150-3167`。同上，中文串当身份。这一处的修法很直接：`ForEach` 改成遍历枚举（`NinebotTripInsight` 已经是 `Identifiable`，`id` 是 ASCII `rawValue`），而不是遍历它的文案。
 
-### 2.3 B3 · 中文被写进持久化 —— 写入 / 读回站点（29 处）
+### 2.3 B3 · 中文被写进持久化 —— 写入 / 读回站点（29 处）〔`operation` 已修〕
+
+> **已改（2026-07-26）**：`NinebotRefreshEvent.operation` 从 `String`（装中文）改成 `NinebotRefreshOperation` 枚举，`source` 改成 `NinebotRefreshSource`，两者编码到磁盘时都是 ASCII。20 个写入点全部改完，文案挪到 `NinebotSettingsView` 的 `private extension`。
+>
+> 顺带把 `NinebotLoadingOperation.syncTravelMonth` 的载荷从**中文显示月份**改成原始 `yyyyMM` —— 否则「同步 2026年03月 行程」这个中文会跟着 operation 一起落盘，等于换个地方重犯同样的错。中文格式化搬进枚举自己的 `message`。
+>
+> 旧记录（装着中文的）**仍然能解码并正常显示**，落到 `.legacy(String)` 分支 —— 不这么做的话整条事件会解码失败、从诊断页消失。
+>
+> **`Key.lastError` 那 7 处没改**：它装的是错误消息，本质是自由文本（`error.localizedDescription` 会给出系统语言的字符串），不是身份。归到 B4 一类。
 
 `NinebotSharedStore` 的 UserDefaults **键全是 ASCII**（`mini-ninebot/Shared/NinebotSharedStore.swift:4-23`，如 `"ninebot.dashboard.snapshot"`），这一条不用担心。**问题在 value**：`NinebotRefreshEvent` 是 `Codable`，它的 `operation` 和 `message` 两个字段装的是中文，会被 JSON 编码进 UserDefaults。
 

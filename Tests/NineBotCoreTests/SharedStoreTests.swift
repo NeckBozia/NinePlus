@@ -731,16 +731,16 @@ final class SharedStoreTests: XCTestCase {
         XCTAssertNil(store.loadLastWidgetRefreshEvent())
 
         let appEvent = NinebotRefreshEvent(
-            source: "app",
-            operation: "refresh",
+            source: .app,
+            operation: .dashboard,
             startedAt: referenceDate,
             endedAt: referenceDate.addingTimeInterval(2),
             success: true,
             message: nil
         )
         let widgetEvent = NinebotRefreshEvent(
-            source: "widget",
-            operation: "timeline",
+            source: .widget,
+            operation: .widgetTimeline,
             startedAt: referenceDate,
             endedAt: referenceDate.addingTimeInterval(5),
             success: false,
@@ -758,11 +758,11 @@ final class SharedStoreTests: XCTestCase {
 
     func testSaveRefreshEventOverwritesThePreviousEvent() {
         let first = NinebotRefreshEvent(
-            source: "app", operation: "first",
+            source: .app, operation: .dashboard,
             startedAt: referenceDate, endedAt: referenceDate, success: true
         )
         let second = NinebotRefreshEvent(
-            source: "app", operation: "second",
+            source: .app, operation: .backgroundRefresh,
             startedAt: referenceDate, endedAt: referenceDate, success: false
         )
 

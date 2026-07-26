@@ -30,7 +30,7 @@ enum NinebotBackgroundTaskManager {
         scheduleRefresh()
 
         let operation = Task {
-            await refreshDashboard(source: "Background")
+            await refreshDashboard(source: .background)
         }
 
         task.expirationHandler = {
@@ -44,7 +44,7 @@ enum NinebotBackgroundTaskManager {
     }
 
     @discardableResult
-    static func refreshDashboard(source: String) async -> Bool {
+    static func refreshDashboard(source: NinebotRefreshSource) async -> Bool {
         let startedAt = Date()
         let store = NinebotSharedStore()
         let cached = store.loadDashboard()
@@ -53,7 +53,7 @@ enum NinebotBackgroundTaskManager {
         guard configuration.isUsable else {
             store.saveLastAppRefreshEvent(NinebotRefreshEvent(
                 source: source,
-                operation: "后台刷新",
+                operation: .backgroundRefresh,
                 startedAt: startedAt,
                 endedAt: Date(),
                 success: false,
@@ -69,7 +69,7 @@ enum NinebotBackgroundTaskManager {
             NinebotChargingLiveActivityManager.sync(with: archivedDashboard)
             store.saveLastAppRefreshEvent(NinebotRefreshEvent(
                 source: source,
-                operation: "后台刷新",
+                operation: .backgroundRefresh,
                 startedAt: startedAt,
                 endedAt: Date(),
                 success: true,
@@ -81,7 +81,7 @@ enum NinebotBackgroundTaskManager {
             store.saveLastError(error.localizedDescription)
             store.saveLastAppRefreshEvent(NinebotRefreshEvent(
                 source: source,
-                operation: "后台刷新",
+                operation: .backgroundRefresh,
                 startedAt: startedAt,
                 endedAt: Date(),
                 success: false,

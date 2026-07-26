@@ -1127,13 +1127,13 @@ private struct DiagnosticsEventCard: View {
 
             if let event {
                 HStack(spacing: 10) {
-                    DiagnosticMetricPill(title: "来源", value: event.source, systemImage: "bolt.horizontal")
+                    DiagnosticMetricPill(title: "来源", value: event.source.rawValue, systemImage: "bolt.horizontal")
                     DiagnosticMetricPill(title: "耗时", value: formatDiagnosticsDuration(event.durationSeconds), systemImage: "timer")
                     DiagnosticMetricPill(title: "时间", value: formatDiagnosticsTime(event.endedAt), systemImage: "clock")
                 }
 
                 if let message = event.message, !message.isEmpty {
-                    Text("\(event.operation) · \(message)")
+                    Text("\(event.operation.text) · \(message)")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(Color.teslaSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1471,6 +1471,37 @@ struct NinebotSettingsView_Previews: PreviewProvider {
         NavigationStack {
             NinebotSettingsView(model: NinebotViewModel())
                 .navigationTitle("我的")
+        }
+    }
+}
+
+
+private extension NinebotRefreshOperation {
+    /// Wording for the diagnostics log. Free to reword — `code` is what gets
+    /// persisted, this never is.
+    var text: String {
+        switch self {
+        case .testConnection: return "测试连接"
+        case .dashboard: return "刷新车况"
+        case .batteryQuery: return "查询电量"
+        case .locationQuery: return "查询位置"
+        case .addressResolve: return "解析车辆位置"
+        case .batteryChemistryUpdate: return "更新电池类型"
+        case .travelMonthSync(let month):
+            guard let month else { return "同步行程" }
+            return "同步 \(NinebotLoadingOperation.displayMonth(month)) 行程"
+        case .chargingNotificationsEnable: return "开启充电通知"
+        case .pushTokenSync: return "上报设备 Token"
+        case .login: return "密码登录"
+        case .bell: return "寻车鸣笛"
+        case .openBucket: return "开座桶"
+        case .engineStart: return "开锁"
+        case .engineStop: return "关锁"
+        case .widgetTimeline: return "刷新小组件"
+        case .backgroundRefresh: return "后台刷新"
+        // Written by a build that knew a code this one does not, or by one from
+        // before this enum existed — in which case it is the old Chinese text.
+        case .legacy(let raw): return raw
         }
     }
 }
