@@ -4209,17 +4209,17 @@ private struct RideDetailHero: View {
 
     private var metrics: [RideDisplayMetric] {
         var result: [RideDisplayMetric] = [
-            record.speed.map { RideDisplayMetric(title: "接口速度", value: formatSpeed($0), systemImage: "speedometer") },
-            record.energy.map { RideDisplayMetric(title: "能耗", value: formatEnergyWh($0), systemImage: "bolt.horizontal.fill") },
-            record.usedElectricity.map { RideDisplayMetric(title: "用电", value: formatPercent($0), systemImage: "powerplug.fill") },
-            record.durationMinutes.map { RideDisplayMetric(title: "时长", value: formatDuration($0), systemImage: "timer") }
+            record.speed.map { RideDisplayMetric(id: "interface_speed", title: "接口速度", value: formatSpeed($0), systemImage: "speedometer") },
+            record.energy.map { RideDisplayMetric(id: "energy", title: "能耗", value: formatEnergyWh($0), systemImage: "bolt.horizontal.fill") },
+            record.usedElectricity.map { RideDisplayMetric(id: "used_electricity", title: "用电", value: formatPercent($0), systemImage: "powerplug.fill") },
+            record.durationMinutes.map { RideDisplayMetric(id: "duration", title: "时长", value: formatDuration($0), systemImage: "timer") }
         ].compactMap { $0 }
 
         if let localRecord {
             result.append(contentsOf: [
-                RideDisplayMetric(title: "本地极速", value: formatSpeed(localRecord.maxSpeedKmh), systemImage: "gauge.with.dots.needle.67percent"),
-                RideDisplayMetric(title: "最大 G", value: formatAccelerationG(localRecord.maxAccelerationG), systemImage: "bolt.circle.fill"),
-                RideDisplayMetric(title: "轨迹点", value: "\(localRecord.trackPointCount) 个", systemImage: "point.3.connected.trianglepath.dotted")
+                RideDisplayMetric(id: "local_top_speed", title: "本地极速", value: formatSpeed(localRecord.maxSpeedKmh), systemImage: "gauge.with.dots.needle.67percent"),
+                RideDisplayMetric(id: "max_g", title: "最大 G", value: formatAccelerationG(localRecord.maxAccelerationG), systemImage: "bolt.circle.fill"),
+                RideDisplayMetric(id: "track_points", title: "轨迹点", value: "\(localRecord.trackPointCount) 个", systemImage: "point.3.connected.trianglepath.dotted")
             ])
         }
 
