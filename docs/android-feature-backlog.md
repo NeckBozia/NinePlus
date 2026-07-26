@@ -1,6 +1,17 @@
 # Android 版功能清单（待排序）
 
-已定方案：Phase 1 不做推送；服务端用社区适配器 [`wuchiawuchi/nineplus-ha-server`](https://github.com/wuchiawuchi/nineplus-ha-server)；先做领域层抽取。
+## 已定方案
+
+| 决策 | 结论 |
+| --- | --- |
+| Phase 1 推送 | **不做**。前台服务自己轮询驱动通知与岛 |
+| 服务端 | 用社区适配器 [`wuchiawuchi/nineplus-ha-server`](https://github.com/wuchiawuchi/nineplus-ha-server) |
+| 领域层抽取 | **做**，见 [domain-extraction-plan.md](./domain-extraction-plan.md) |
+| 代码位置 | **同仓库**，与 `mini-ninebot/` 并列一个 `android/` |
+| iOS 版 | **两端长期并行维护** |
+| 地图 | **腾讯地图**。底图 GCJ-02，现有坐标转换代码原样保留 |
+| 本地 GPS/IMU 记录（F14b） | **做**，正常排期 |
+| minSdk | 33（Android 13）。iOS 侧部署目标已是 26.5，两端同样激进，省掉大量兼容分支 |
 
 下面把 iOS 现有功能拆成可独立交付的单元，供排优先级。**F0 是地基，必须最先做**；其余各项除标注依赖外都可以任意排序。
 
