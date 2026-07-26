@@ -76,7 +76,8 @@
 - **阴影要重做**：38 处带颜色和偏移的柔和阴影，Compose 的 `shadow` 只有单一 elevation，需要 `Modifier.drawBehind` 手绘。看着小，实际磨人。
 - **毛玻璃**：2 处 `ultraThinMaterial`，用 `RenderEffect.createBlurEffect`（API 31+）。
 - **下拉刷新**：iOS 是 6 个 `@State` 组成的手写状态机，不是 `.refreshable`。Compose 侧用 `nestedScroll` 重写。
-- **图标**：85 个唯一 SF Symbol、299 处调用，其中约 30–40 个（`scooter`、`gauge.with.dots.needle.67percent`、`bolt.batteryblock.fill`、`road.lanes` 等）Material Symbols 里没有，需要设计师定制。这条要尽早启动，是并行关键路径。
+- **图标**：97 个唯一 SF Symbol、274 处调用。逐个比对过 Material Symbols 的官方 codepoints 清单后，**没有一个需要定制** —— 81 个直接可用、16 个近似可用（形状有差但语义清楚）。上面举过的那几个「以为没有」的（`scooter`、`gauge.with.dots.needle.67percent`、`bolt.batteryblock.fill`、`road.lanes`）都有可用候选。全清单见 [icon-inventory.md](./icon-inventory.md)。唯一真需要设计出手的是登录页那个当 App Logo 用的图标，属品牌资产。
+  这条原先按「30–40 个定制、1 周设计」排在并行关键路径上，现在这个前提没了 —— 排期怎么调见 `icon-inventory.md` 的 I1。
 - **文案**：886 行硬编码中文搬进 `strings.xml`。**不能全局替换**——有的中文是逻辑标识不是 UI 文案（见 0.1）。
 
 ### 1.3 轨迹存储用 Room（含在数据层工时内）
@@ -333,7 +334,7 @@ iOS Live Activity 的 `ContentState` 有 8 个字段：`battery`、`estimatedRan
 | | 系统集成（Widget / Tile / 推送 / 后台） | 1.5 周 |
 | | 联调测试 | 2 周 |
 | Phase 2 | ProgressStyle 保底 + 小米超级岛 | 2.5 周 |
-| 并行 | 图标设计（30–40 个） | 1 周 |
+| 并行 | 图标设计（原估 30–40 个；实际 0 个定制，见 I1） | 原估 1 周，待重排 |
 
 单人全职约 4–5 个月，两人约 2.5–3 个月。图标设计和小米权限申请要最先启动，它们在关键路径上。
 
