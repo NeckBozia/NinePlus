@@ -66,12 +66,18 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(formatDuration(0), "0 分钟")
     }
 
-    /// Minutes are rounded to whole numbers while the hour switch compares the
-    /// raw value, so 59.9 minutes reads as "60 分钟" — not "59.9 分钟", and not
-    /// "1 小时". Both platforms have to land on the same odd-looking string.
-    func testDurationJustUnderAnHourRoundsToSixtyMinutes() {
-        XCTAssertEqual(formatDuration(59.9), "60 分钟")
+    /// Minutes print without decimals, so the hour switch is compared at that
+    /// same precision: anything that would print as 60 reads "1 小时" instead.
+    func testDurationRollsUpRatherThanPrintingSixtyMinutes() {
+        XCTAssertEqual(formatDuration(59.9), "1 小时")
+        XCTAssertEqual(formatDuration(59.5), "1 小时")
         XCTAssertEqual(formatDuration(59.4), "59 分钟")
+    }
+
+    func testDisplayRoundedMatchesTheFormatterPrecision() {
+        XCTAssertEqual(displayRounded(59.9, maximumFractionDigits: 0), 60)
+        XCTAssertEqual(displayRounded(59.9, maximumFractionDigits: 1), 59.9, accuracy: 1e-9)
+        XCTAssertEqual(displayRounded(23.96, maximumFractionDigits: 1), 24, accuracy: 1e-9)
     }
 
     // MARK: - Booleans and coordinates

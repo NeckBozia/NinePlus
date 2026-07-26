@@ -1695,7 +1695,10 @@ struct NinebotVehicleState: Codable, Equatable {
     }
 
     private static func durationText(minutes: Double) -> String {
-        if minutes >= 60 {
+        // `decimalFormatter` prints one decimal, so the bucket is chosen from
+        // the value at that precision — 59.97 minutes reads "1 小时", never
+        // "60 分钟".
+        if displayRounded(minutes, maximumFractionDigits: 1) >= 60 {
             let hours = minutes / 60
             return "\(decimalFormatter.string(from: NSNumber(value: hours)) ?? "--") 小时"
         }

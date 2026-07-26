@@ -100,9 +100,19 @@ func shortTrendValue(_ value: Double) -> String {
     return formatNumber(value, unit: "", maximumFractionDigits: 1)
 }
 
+/// Rounds a value the way `NumberFormatter` will when it prints it.
+///
+/// Unit buckets are chosen with this rather than with the raw value, so a span
+/// never prints the number that means the next unit up — no "60 分钟", no
+/// "24 小时".
+func displayRounded(_ value: Double, maximumFractionDigits: Int) -> Double {
+    let scale = pow(10.0, Double(maximumFractionDigits))
+    return (value * scale).rounded() / scale
+}
+
 func formatDuration(_ minutes: Double?) -> String {
     guard let minutes else { return "--" }
-    if minutes >= 60 {
+    if displayRounded(minutes, maximumFractionDigits: 0) >= 60 {
         return formatNumber(minutes / 60, unit: " 小时", maximumFractionDigits: 1)
     }
     return formatNumber(minutes, unit: " 分钟", maximumFractionDigits: 0)
