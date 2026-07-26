@@ -103,4 +103,8 @@ for line in open("main.jsonl"):
 | `.github/workflows/ci.yml` | 两个门禁 job |
 | `mini-ninebot/` | iOS 客户端本体 |
 
-注意 **`claude/android-portability-research-daro6y` 这个分支上有尚未合并的工作**，不只是文档 —— 领域层抽取、中文标识修复、时长精度统一都在上面。搬之前先确认这些改动的去向。
+**已定：以 `claude/android-portability-research-daro6y` 这个分支的状态作为新仓库的起点**，不先合回本仓库的 `main`。
+
+理由是新仓库反正要重新组织目录（客户端与服务端并列），合一次 `main` 再拆一次是白做。这个分支上有尚未合并的**代码**改动，不只是文档：领域层抽取（7 个新文件）、中文标识修复、时长精度统一、383 个单元测试、两条 CI 门禁、`server-patches/`。`main` 上这些都没有。
+
+本仓库在新仓库建好之后废弃。

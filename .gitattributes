@@ -1,3 +1,2 @@
-# The archived session transcript is machine-generated JSONL. Diffs of it are
-# meaningless and it should not count toward language statistics.
-docs/session-transcript/**/*.jsonl -diff -merge linguist-generated
+# 归档的会话记录是机器生成的 JSONL。它的 diff 没有意义，也不该计入语言统计。
+docs/移植可行性研究/**/*.jsonl -diff -merge linguist-generated
