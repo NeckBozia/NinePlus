@@ -18,7 +18,11 @@ android/
 >
 > **`isDangerous` / `confirmationTitle` / `confirmationMessage` 在 iOS 侧是死代码**。全仓只有定义（`NinebotViewModel.swift:68/77/99`），没有任何调用点。`performVehicleAction`（`NinebotDashboardView.swift:192-197`）裸执行，**App 内既无确认弹窗也无生物识别**，安全性完全依赖系统对 App Intents 的 `authenticationPolicy` 拦截。Android 的「滑动确认 + BiometricPrompt」是**新增安全层**，这三个属性正好提供现成文案。
 >
-> **已定决策**：电量显示照抄 iOS 的线性细长条，不做环形图。寻车铃与磁贴控车均不做生物识别。
+> **已定决策**
+> - 电量显示照抄 iOS 的线性细长条，不做环形图
+> - 寻车铃与磁贴控车均不做生物识别
+> - **下拉刷新完整复刻 iOS 手势**（不用 Material3 组件，工期 +2 天）
+> - **电量条变化加平滑动画**（iOS 是跳变，这是有意升级）
 
 ---
 
@@ -195,7 +199,14 @@ DragGesture(minimumDistance: 12, coordinateSpace: .global)
 收起延迟：正常 900ms / 刷新完成 450ms / 手势非法 200ms
 ```
 
-Android **不要复刻这套自定义手势**，用 Material3 `PullToRefreshBox`。但「圆片里显示 `updatedAt` 的 HH:mm」这个信息点要保留，塞进 `indicator = {}`。有意偏离。
+**已定：完整复刻这套手势，不用 Material3 `PullToRefreshBox`。** 工期 +2 天。
+
+实现路径：自定义 `nestedScroll` 连接器接管顶部过冲，把上面的阈值和曲线逐条搬过来。需要额外处理的边界：
+
+- 嵌套滚动的消费顺序（内层 LazyColumn 到顶后才把剩余位移交给刷新手势）
+- 快速甩动时不误触发（对应 iOS 的「起手那一刻记住是否在顶部」）
+- 圆片的缩放与透明度用同样的两条线性映射，不要换成 spring
+- 三档收起延迟（900 / 450 / 200ms）照抄
 
 ### 三 · Android 实现要点
 
@@ -280,7 +291,7 @@ fun BatteryProgressBar(fraction: Float, modifier: Modifier = Modifier) {
 
 | 效果 | iOS | Compose |
 | --- | --- | --- |
-| 电量变化 | **无动画**，width 直接跳变 | 待定，见「动画一致性」一节 |
+| 电量变化 | **无动画**，width 直接跳变 | **已定：加平滑动画** `tween(600, FastOutSlowInEasing)`。有意升级，主要为了解决冷启动时从缓存旧值跳到新值那一下的突兀 |
 | 充电闪电浮动 | `offset(y: ±1)`，`easeInOut(0.8).repeatForever(autoreverses:true)`（`:1951`） | `rememberInfiniteTransition` + `tween(800)`, `RepeatMode.Reverse` |
 | 充电流光 | 宽 42%、高 2pt，`LinearGradient(clear→green90%→clear)`，offset `-0.42w → +w`，`linear(1.35).repeatForever(autoreverses:false)`（`:1984-1997`） | `tween(1350, LinearEasing)`, `RepeatMode.Restart`, `graphicsLayer{translationX}`，父容器 `clipToBounds()` |
 
