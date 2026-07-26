@@ -6,17 +6,24 @@ import XCTest
 final class TripTrendTests: XCTestCase {
     private let month = "202607"
 
+    /// `minuteOffset` matters more than it looks. `state.rides` deduplicates by
+    /// `stableIdentityKey`, and with an empty `raw` payload that key is built
+    /// from start, end, mileage and used electricity — **not** from `id` and
+    /// **not** from `energy`. Rides sharing a timestamp therefore collapse into
+    /// one, so anything testing aggregates has to space them out.
     private func ride(
         id: String = UUID().uuidString,
+        minuteOffset: Int = 0,
         mileage: Double? = nil,
         energy: Double? = nil,
         usedElectricity: Double? = nil,
         speed: Double? = nil
     ) -> NinebotRideRecord {
-        NinebotRideRecord(
+        let start = 1_700_000_000.0 + Double(minuteOffset) * 60
+        return NinebotRideRecord(
             id: id,
-            startedAt: Date(timeIntervalSince1970: 1_700_000_000),
-            endedAt: Date(timeIntervalSince1970: 1_700_003_600),
+            startedAt: Date(timeIntervalSince1970: start),
+            endedAt: Date(timeIntervalSince1970: start + 3_600),
             mileage: mileage,
             energy: energy,
             usedElectricity: usedElectricity,
@@ -101,16 +108,20 @@ final class TripTrendTests: XCTestCase {
 
     func testAveragesIgnoreNonPositiveSamples() {
         let t = trend(rides: [
-            ride(usedElectricity: 10, speed: 20),
-            ride(usedElectricity: 0, speed: 0),      // dropped
-            ride(usedElectricity: 20, speed: 40),
+            ride(minuteOffset: 0, usedElectricity: 10, speed: 20),
+            ride(minuteOffset: 90, usedElectricity: 0, speed: 0),      // dropped
+            ride(minuteOffset: 180, usedElectricity: 20, speed: 40),
         ])
         XCTAssertEqual(t.averageUsedElectricity ?? 0, 15, accuracy: 1e-9)
         XCTAssertEqual(t.averageSpeed ?? 0, 30, accuracy: 1e-9)
     }
 
     func testPeakRideMileageTakesTheMaximum() {
-        let t = trend(rides: [ride(mileage: 3), ride(mileage: 11), ride(mileage: 7)])
+        let t = trend(rides: [
+            ride(minuteOffset: 0, mileage: 3),
+            ride(minuteOffset: 90, mileage: 11),
+            ride(minuteOffset: 180, mileage: 7),
+        ])
         XCTAssertEqual(t.peakRideMileage, 11)
     }
 
@@ -121,16 +132,19 @@ final class TripTrendTests: XCTestCase {
     }
 
     func testEnergyPerKmFallsBackToPerRideAverage() {
+        // Spaced out, otherwise the first two collapse: same mileage and no
+        // used-electricity means the same identity key, since energy is not part
+        // of it.
         let t = trend(rides: [
-            ride(mileage: 10, energy: 200),          // 20 Wh/km
-            ride(mileage: 10, energy: 300),          // 30 Wh/km
-            ride(mileage: 0, energy: 100),           // dropped
+            ride(minuteOffset: 0, mileage: 10, energy: 200),     // 20 Wh/km
+            ride(minuteOffset: 90, mileage: 10, energy: 300),    // 30 Wh/km
+            ride(minuteOffset: 180, mileage: 0, energy: 100),    // dropped
         ])
         XCTAssertEqual(t.energyPerKm ?? 0, 25, accuracy: 1e-9)
     }
 
     func testRecentRidesAreCappedAtEight() {
-        let t = trend(rides: (0..<12).map { ride(id: "r\($0)", mileage: 1) })
+        let t = trend(rides: (0..<12).map { ride(id: "r\($0)", minuteOffset: $0 * 90, mileage: 1) })
         XCTAssertEqual(t.rideCount, 12)
         XCTAssertEqual(t.recentRides.count, NinebotTripTrend.recentRideDisplayCount)
         XCTAssertEqual(t.recentRides.count, 8)
@@ -142,6 +156,24 @@ final class TripTrendTests: XCTestCase {
         let t = trend(dailyMileages: records)
         XCTAssertEqual(t.dailyRecords.map(\.day), [1, 2, 3])
         XCTAssertEqual(t.activeDayCount, 3)
+    }
+
+    /// Documents why the fixtures above space rides apart. The identity key
+    /// used for deduplication ignores both `id` and `energy`, so two rides with
+    /// the same timestamp and mileage are treated as one even when their energy
+    /// differs. Android has to reproduce this or ride counts will diverge.
+    func testRidesWithTheSameTimestampAndMileageCollapse() {
+        let t = trend(rides: [
+            ride(id: "a", minuteOffset: 0, mileage: 10, energy: 200),
+            ride(id: "b", minuteOffset: 0, mileage: 10, energy: 300),
+        ])
+        XCTAssertEqual(t.rideCount, 1, "identity key covers start/end/mileage/used, not id or energy")
+
+        let spaced = trend(rides: [
+            ride(id: "a", minuteOffset: 0, mileage: 10, energy: 200),
+            ride(id: "b", minuteOffset: 90, mileage: 10, energy: 300),
+        ])
+        XCTAssertEqual(spaced.rideCount, 2)
     }
 
     // MARK: - Insight rules
