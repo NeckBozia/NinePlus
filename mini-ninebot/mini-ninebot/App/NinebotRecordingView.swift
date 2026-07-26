@@ -154,6 +154,7 @@ final class NinebotRideRecorder: NSObject, ObservableObject, CLLocationManagerDe
     private var ignoreLocationUntil: Date?
     private var ignoreMotionUntil: Date?
     private var appActiveObserver: NSObjectProtocol?
+    private var isBackgroundLocationEnabled = false
 
     private let maximumReasonableSpeedKmh = 132.0
     private let maximumReasonableGPSAccelerationG = 0.75
@@ -185,7 +186,13 @@ final class NinebotRideRecorder: NSObject, ObservableObject, CLLocationManagerDe
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.enterStabilizationCooldown()
+                guard let self else { return }
+                // With background updates running the track never paused, so
+                // there is nothing to stabilise.  If they were not running —
+                // or the system suspended us anyway — the gap detection in
+                // consume(_:) still catches it on the next fix.
+                guard !self.isBackgroundLocationEnabled else { return }
+                self.enterStabilizationCooldown()
             }
         }
     }
@@ -287,8 +294,22 @@ final class NinebotRideRecorder: NSObject, ObservableObject, CLLocationManagerDe
         ignoreMotionUntil = Date().addingTimeInterval(motionCooldownDuration)
         startedAt = Date()
         endedAt = nil
+        setBackgroundLocationUpdates(enabled: true)
         startMotionUpdates()
         manager.startUpdatingLocation()
+    }
+
+    /// Keeps location flowing while the app is backgrounded or the screen is
+    /// locked.  Only enabled for the duration of a recording — leaving it on
+    /// would keep the blue status bar indicator up and drain the battery while
+    /// the user is merely previewing.
+    private func setBackgroundLocationUpdates(enabled: Bool) {
+        guard isBackgroundLocationEnabled != enabled else { return }
+        // Requires the `location` entry in UIBackgroundModes; without it this
+        // assignment traps.
+        manager.allowsBackgroundLocationUpdates = enabled
+        manager.showsBackgroundLocationIndicator = enabled
+        isBackgroundLocationEnabled = enabled
     }
 
     func stop() -> NinebotRecordedRide? {
@@ -296,6 +317,7 @@ final class NinebotRideRecorder: NSObject, ObservableObject, CLLocationManagerDe
         let endedAt = Date()
         isRecording = false
         self.endedAt = endedAt
+        setBackgroundLocationUpdates(enabled: false)
 
         let correctedDistanceMeters = NinebotRecordedRide.recalculatedDistanceMeters(from: points)
         let finalDistanceMeters = correctedDistanceMeters > 0 ? correctedDistanceMeters : distanceMeters
@@ -693,7 +715,9 @@ private struct RecordingHeader: View {
             return error
         }
         if recorder.isRecording {
-            return "正在记录速度、G 值和轨迹"
+            // Recording survives backgrounding and lock now, but nothing else
+            // on screen says so.
+            return "正在记录 · 可以锁屏，后台继续"
         }
         if recorder.authorizationStatus == .notDetermined {
             return "允许定位后会显示实时位置"

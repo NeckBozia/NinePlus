@@ -8,10 +8,14 @@
 | 服务端 | 用社区适配器 [`wuchiawuchi/nineplus-ha-server`](https://github.com/wuchiawuchi/nineplus-ha-server) |
 | 领域层抽取 | **做**，见 [domain-extraction-plan.md](./domain-extraction-plan.md) |
 | 代码位置 | **同仓库**，与 `mini-ninebot/` 并列一个 `android/` |
-| iOS 版 | **两端长期并行维护** |
-| 地图 | **腾讯地图**。底图 GCJ-02，现有坐标转换代码原样保留 |
+| iOS 版 | **两端长期并行维护**，但不上 Kotlin Multiplatform（成本高于收益，改用共享测试夹具对齐） |
+| 地图 | **高德地图**。底图 GCJ-02，现有坐标转换代码原样保留 |
 | 本地 GPS/IMU 记录（F14b） | **做**，正常排期 |
+| 本地记录跨端同步 | **不做**，两端各存各的 |
 | minSdk | 33（Android 13）。iOS 侧部署目标已是 26.5，两端同样激进，省掉大量兼容分支 |
+| 包名 | `com.nineplus.android`（可改） |
+| 应用名 | NineBot+（与 iOS 一致） |
+| 图标 | 复用仓库根目录的 `appicon.PNG`，按 Android 自适应图标规格切前景/背景层 |
 
 下面把 iOS 现有功能拆成可独立交付的单元，供排优先级。**F0 是地基，必须最先做**；其余各项除标注依赖外都可以任意排序。
 
