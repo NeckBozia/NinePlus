@@ -180,16 +180,20 @@
 
 改法是加一个 `displayRounded(_:maximumFractionDigits:)`（`Shared/NinebotFormatting.swift`），把「该显示成几」先算出来，再拿它去比边界。三处都改了：
 
-| 位置 | 显示精度 | 改后的翻档点 | 例子 |
+**后续（L10，你又定了一条）**：四处的显示精度**统一成一位小数**，「精确那种」。原先 `formatDuration` 的分钟不带小数，导致同一个输入 59.9 分钟在骑行时长那里显示「1 小时」、在充电剩余时间那里显示「59.9 分钟」。现在四处口径完全一致：
+
+| 位置 | 分钟显示精度 | 翻档点 | 59.9 分钟显示成 |
 | --- | --- | --- | --- |
-| 记录周期，分钟→小时（`NinebotHistoryPeriod`） | 0 位小数 | 59:30 | 3599 秒 → 「1 小时」 |
-| 记录周期，小时→天 | 1 位小数 | 23.95 小时 | 86399 秒 → 「1 天」 |
-| 骑行时长（`formatDuration`） | 0 位小数 | 59.5 分钟 | 59.9 分钟 → 「1 小时」 |
-| 充电剩余时间（`durationText`） | 1 位小数 | 59.95 分钟 | 59.97 分钟 → 「1 小时」 |
+| 记录周期，分钟→小时（`NinebotHistoryPeriod`） | 1 位小数 | 59.95 分钟 | 59.9 分钟 |
+| 骑行时长（`formatDuration`） | 1 位小数 | 59.95 分钟 | 59.9 分钟 |
+| 充电剩余时间（`durationText`） | 1 位小数 | 59.95 分钟 | 59.9 分钟 |
+| 记录周期，小时→天 | 小时 1 位小数 | 23.95 小时 | —— |
 
-翻档之后显示的还是真实跨度，不会拍平成整数 —— 23:55 显示「23.9 小时」而不是「1 天」。
+整数不带多余的小数位（`45` 显示成「45 分钟」不是「45.0 分钟」），因为 `minimumFractionDigits` 是 0。翻档之后显示的还是真实跨度，不会拍平成整数 —— 23:55 显示「23.9 小时」而不是「1 天」。
 
-测试：`HistoryPeriodTests.testJustUnderABoundaryRollsUp`、`FormattingTests.testDurationRollsUpRatherThanPrintingSixtyMinutes`、`ChargingStatusTests.testRemainingTimeRollsUpAtOneDecimal`。
+精度常量：`durationFractionDigits`（`Shared/NinebotFormatting.swift`），`NinebotHistoryPeriod` 的两个精度常量都指向它，改一处就三处同步。
+
+测试：`HistoryPeriodTests.testJustUnderABoundaryRollsUp`、`FormattingTests.testDurationKeepsItsDecimalAndRollsUpAt5995`、`ChargingStatusTests.testRemainingTimeRollsUpAtOneDecimal`。
 
 ---
 
@@ -213,6 +217,13 @@
 | 磁贴控车鉴权 | 不要，设备解锁即可 |
 | 下拉刷新 | 完整复刻 iOS 手势 |
 | 电量条动画 | 加平滑动画 |
+| 时长显示精度 | 分钟和小时都留一位小数，翻档点统一在 59.95 分钟（L10） |
+| 图标定制 | 0 个。登录页 Logo 也不做设计，直接用 `bolt` 拼（I1、I7） |
+| 图标设计工期 | 那 1 周已撤，不再是关键路径（I1） |
+| 图标资源方案 | 内嵌 Material Symbols 可变字体；Widget／磁贴／Marker 那 14 个另出 drawable，两套并行维护（I8） |
+| 语音入口 | 不做。55 条 Siri 短语无移植目标（L5） |
+| 社区服务端的缺陷 | **fork 过来自己改**，不提 PR（A4） |
+| 连九号官方接口 | 做不到，服务端是必须的。协议知识封在闭源的 `ninecli` 里 |
 
 ---
 
@@ -228,12 +239,14 @@ Phase 3/4/5 的规格，加上图标、文案、服务端 API 三份清点，攒
 
 ### 现在就该定的 4 条
 
-| | 为什么现在 |
+全部有了处置：
+
+| | 状态 |
 | --- | --- |
-| **I1** | 原计划给「30–40 个定制图标」排了 1 周设计工期并标为关键路径，实际是 0 个。这 1 周撤掉还是改投别处，影响的是眼下的排期 |
-| **I8** | 图标做成 XML vector drawable 还是内嵌可变字体，决定约 92 个资源文件怎么生成 —— 在动手转换之前定，返工成本最低 |
-| **C1** | 小米超级岛认不认本地通知驱动。不认的话 5.5 从 7 天压到 4 天，交付范围也变。验证本身只要半天，但要提前排 |
-| **A1 + R14** | 轨迹那 450 行兼容代码砍到什么程度。**先跑 V1**，跑完这条基本就自明了：全量移植 2 天 / 精简到十几行 0.5 天 / 整项取消 |
+| **I1** | 〔已定〕那 1 周设计工期撤掉，关键路径标记撤掉 |
+| **I8** | 〔已定〕内嵌 Material Symbols 可变字体，Widget／磁贴／Marker 那 14 个另出 drawable |
+| **C1** | 〔已派出〕小米超级岛的本地通知验证交给别人做，等结果 |
+| **A1 + R14** | 〔等实测〕先跑 V1，拿到 travel detail 的原始 JSON 再定。另有半条要拍板：即使发现服务端已归一，是否仍然全量移植那 450 行 |
 
 ### 各阶段开工前要定的 6 条
 

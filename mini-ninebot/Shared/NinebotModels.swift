@@ -1771,9 +1771,9 @@ struct NinebotVehicleHistorySummary: Equatable {
         case .days(let days):
             return "\(Self.numberText(days, maximumFractionDigits: 1)) 天"
         case .hours(let hours):
-            return "\(Self.numberText(hours, maximumFractionDigits: 1)) 小时"
+            return "\(Self.numberText(hours, maximumFractionDigits: NinebotHistoryPeriod.hoursFractionDigits)) 小时"
         case .minutes(let minutes):
-            return "\(Self.numberText(minutes, maximumFractionDigits: 0)) 分钟"
+            return "\(Self.numberText(minutes, maximumFractionDigits: NinebotHistoryPeriod.minutesFractionDigits)) 分钟"
         }
     }
 

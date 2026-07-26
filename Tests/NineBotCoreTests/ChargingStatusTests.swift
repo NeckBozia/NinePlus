@@ -174,9 +174,9 @@ final class ChargingStatusTests: XCTestCase {
         XCTAssertEqual(s.chargeTo80Estimate, .minutes(120))
     }
 
-    /// The charging texts print minutes with one decimal, so their hour switch
-    /// is compared at one decimal too — a narrower window than `formatDuration`,
-    /// but the same rule: never print "60 分钟".
+    /// The charging texts print minutes with one decimal and switch to hours at
+    /// that same precision — the same rule and the same rollover point as
+    /// `formatDuration`, so the two never disagree on a given input.
     func testRemainingTimeRollsUpAtOneDecimal() {
         XCTAssertEqual(state(remainingChargeTime: 59.97).remainingChargeTimeText, "1 小时")
         XCTAssertEqual(state(remainingChargeTime: 59.9).remainingChargeTimeText, "59.9 分钟")

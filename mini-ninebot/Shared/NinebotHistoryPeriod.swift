@@ -21,8 +21,11 @@ enum NinebotHistoryPeriod: Equatable {
 
     /// Fraction digits each unit is displayed with. The bucket has to be
     /// decided at the same precision the number is printed at.
-    static let hoursFractionDigits = 1
-    static let minutesFractionDigits = 0
+    ///
+    /// Both are one decimal, matching `formatDuration` — a span keeps its
+    /// precision instead of being rounded to the nearest whole minute.
+    static let hoursFractionDigits = durationFractionDigits
+    static let minutesFractionDigits = durationFractionDigits
 
     /// - Parameter seconds: elapsed time between the first and last sample.
     init(seconds: TimeInterval) {

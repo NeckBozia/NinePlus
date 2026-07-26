@@ -110,12 +110,16 @@ func displayRounded(_ value: Double, maximumFractionDigits: Int) -> Double {
     return (value * scale).rounded() / scale
 }
 
+/// Minutes and hours both print one decimal, so a duration keeps its precision
+/// rather than being rounded to the nearest whole minute.
+let durationFractionDigits = 1
+
 func formatDuration(_ minutes: Double?) -> String {
     guard let minutes else { return "--" }
-    if displayRounded(minutes, maximumFractionDigits: 0) >= 60 {
-        return formatNumber(minutes / 60, unit: " 小时", maximumFractionDigits: 1)
+    if displayRounded(minutes, maximumFractionDigits: durationFractionDigits) >= 60 {
+        return formatNumber(minutes / 60, unit: " 小时", maximumFractionDigits: durationFractionDigits)
     }
-    return formatNumber(minutes, unit: " 分钟", maximumFractionDigits: 0)
+    return formatNumber(minutes, unit: " 分钟", maximumFractionDigits: durationFractionDigits)
 }
 
 func formatRideDate(_ date: Date) -> String {

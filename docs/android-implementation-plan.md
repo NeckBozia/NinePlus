@@ -114,7 +114,7 @@
 
 | | 内容 | 工时 | 说明 |
 | --- | --- | --- | --- |
-| 图标资产 | **0 个定制**，约 92 个 vector drawable 转换 | 待重排 | 97 个唯一 SF Symbol / 274 处引用，逐个比对 Material Symbols 官方清单后无一缺对应物（81 直接可用 + 16 近似可用）。原先「30–40 个定制、1 周关键路径」的前提不成立，排期见 [icon-inventory.md](./icon-inventory.md) 的 I1 |
+| 图标资产 | **0 个定制**。内嵌 Material Symbols 可变字体 + 约 14 个 drawable 供 Widget／磁贴／地图 Marker 用 | 约 1–2 天，**不再是关键路径** | 97 个唯一 SF Symbol / 274 处引用，逐个比对 Material Symbols 官方清单后无一缺对应物（81 直接可用 + 16 近似可用）。原先「30–40 个定制、1 周设计、关键路径」的前提不成立，已撤。选可变字体是为了可变轴动画（充电时 FILL 渐变），代价是 Widget 侧另维护一套 drawable —— 已确认接受。详见 [icon-inventory.md](./icon-inventory.md) |
 | 文案抽取 | 886 行中文进 `strings.xml` | 3 天 | 不能全局替换，有的中文是逻辑标识 |
 
 ---

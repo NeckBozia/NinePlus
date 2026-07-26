@@ -66,12 +66,19 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(formatDuration(0), "0 分钟")
     }
 
-    /// Minutes print without decimals, so the hour switch is compared at that
-    /// same precision: anything that would print as 60 reads "1 小时" instead.
-    func testDurationRollsUpRatherThanPrintingSixtyMinutes() {
-        XCTAssertEqual(formatDuration(59.9), "1 小时")
-        XCTAssertEqual(formatDuration(59.5), "1 小时")
-        XCTAssertEqual(formatDuration(59.4), "59 分钟")
+    /// Minutes print one decimal, and the hour switch is compared at that same
+    /// precision — so the rollover happens at 59.95, not at 59.5.
+    func testDurationKeepsItsDecimalAndRollsUpAt5995() {
+        XCTAssertEqual(formatDuration(59.9), "59.9 分钟")
+        XCTAssertEqual(formatDuration(59.4), "59.4 分钟")
+        // Would print as 60.0 minutes, so it reads in hours instead.
+        XCTAssertEqual(formatDuration(59.97), "1 小时")
+    }
+
+    /// A whole number prints without a trailing ".0".
+    func testWholeMinutesPrintWithoutADecimal() {
+        XCTAssertEqual(formatDuration(45), "45 分钟")
+        XCTAssertEqual(formatDuration(30.5), "30.5 分钟")
     }
 
     func testDisplayRoundedMatchesTheFormatterPrecision() {

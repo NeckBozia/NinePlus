@@ -77,7 +77,7 @@
 - **毛玻璃**：2 处 `ultraThinMaterial`，用 `RenderEffect.createBlurEffect`（API 31+）。
 - **下拉刷新**：iOS 是 6 个 `@State` 组成的手写状态机，不是 `.refreshable`。Compose 侧用 `nestedScroll` 重写。
 - **图标**：97 个唯一 SF Symbol、274 处调用。逐个比对过 Material Symbols 的官方 codepoints 清单后，**没有一个需要定制** —— 81 个直接可用、16 个近似可用（形状有差但语义清楚）。上面举过的那几个「以为没有」的（`scooter`、`gauge.with.dots.needle.67percent`、`bolt.batteryblock.fill`、`road.lanes`）都有可用候选。全清单见 [icon-inventory.md](./icon-inventory.md)。唯一真需要设计出手的是登录页那个当 App Logo 用的图标，属品牌资产。
-  这条原先按「30–40 个定制、1 周设计」排在并行关键路径上，现在这个前提没了 —— 排期怎么调见 `icon-inventory.md` 的 I1。
+  这条原先按「30–40 个定制、1 周设计」排在并行关键路径上，前提没了，**那一周已撤**（I1）。落地方案选了内嵌 Material Symbols 可变字体（I8），为的是可变轴动画；Widget／磁贴／地图 Marker 吃不了字体，那 14 个图标另出 drawable，已确认接受两套并行维护。
 - **文案**：886 行硬编码中文搬进 `strings.xml`。**不能全局替换**——有的中文是逻辑标识不是 UI 文案（见 0.1）。
 
 ### 1.3 轨迹存储用 Room（含在数据层工时内）
@@ -96,7 +96,7 @@ ride_points  (ride_id FK, seq, timestamp, lat, lon, speed_kmh, accel_g, h_accura
 
 **这是唯一无法靠翻译代码解决的部分。**
 
-`NinebotRideRecorder` 的 13 个 GPS 阈值、一阶低通滤波（系数 0.18）、速率限制（0.08）、死区（0.025）、20 Hz 采样，全是针对 iPhone 调出来的。Apple 的 `CMDeviceMotion.userAcceleration` 是免费的融合结果（已去重力、已做 AHRS），Android 的 `TYPE_LINEAR_ACCELERATION` 是虚拟传感器，各厂商质量参差，采样率只是 hint。
+`NinebotRideRecorder` 的阈值、一阶低通滤波（系数 0.18）、速率限制（0.08）、死区（0.025）、20 Hz 采样，全是针对 iPhone 调出来的。**阈值实际是 32 个不是 13 个** —— 15 个有名字的声明常量，另外 17 个是散在表达式里的裸数字（滤波系数全在这一类），逐条清单见 [phase4-sensors-spec.md](./phase4-sensors-spec.md)。Apple 的 `CMDeviceMotion.userAcceleration` 是免费的融合结果（已去重力、已做 AHRS），Android 的 `TYPE_LINEAR_ACCELERATION` 是虚拟传感器，各厂商质量参差，采样率只是 hint。
 
 做法：先直译逻辑结构，再在真机上骑行采样、对比 iPhone 基线、重调参数。至少覆盖两个不同厂商的机型。
 
@@ -334,7 +334,7 @@ iOS Live Activity 的 `ContentState` 有 8 个字段：`battery`、`estimatedRan
 | | 系统集成（Widget / Tile / 推送 / 后台） | 1.5 周 |
 | | 联调测试 | 2 周 |
 | Phase 2 | ProgressStyle 保底 + 小米超级岛 | 2.5 周 |
-| 并行 | 图标设计（原估 30–40 个；实际 0 个定制，见 I1） | 原估 1 周，待重排 |
+| 并行 | 图标资产（0 个定制，可变字体 + 14 个 drawable） | 1–2 天，非关键路径 |
 
 单人全职约 4–5 个月，两人约 2.5–3 个月。图标设计和小米权限申请要最先启动，它们在关键路径上。
 

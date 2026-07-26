@@ -31,13 +31,13 @@ final class HistoryPeriodTests: XCTestCase {
     }
 
     /// The hour boundary is measured against the printed minute figure, which
-    /// carries no decimals — so it flips half a minute early, at 59:30.
+    /// carries one decimal — so it flips at 59.95 minutes.
     func testHourBoundaryFollowsThePrintedMinuteFigure() {
         XCTAssertEqual(period(3_600), .hours(1))
-        // 59:30 prints as 60 minutes, so it reads in hours instead.
-        XCTAssertEqual(period(3_570), .hours(3_570 / 3_600))
-        // 59:29 still prints as 59.
-        XCTAssertEqual(period(3_569), .minutes(3_569 / 60))
+        // 59.967 minutes prints as 60.0, so it reads in hours instead.
+        XCTAssertEqual(period(3_598), .hours(3_598 / 3_600))
+        // 59.833 still prints as 59.8.
+        XCTAssertEqual(period(3_590), .minutes(3_590 / 60))
     }
 
     /// Same for the day boundary, against the printed hour figure, which
