@@ -67,6 +67,7 @@ Current suites:
 | --- | --- |
 | `CoordinateTransformTests.swift` | `NinebotCoordinateTransform` |
 | `JSONValueTests.swift` | `JSONValue` coding and accessors |
+| `ModelCodingTests.swift` | Codable round trips, backward compatibility, track sampling, history summaries |
 | `RecordedRideTests.swift` | `NinebotRecordedRide` |
 | `RideDetailParsingTests.swift` | `NinebotRideDetail` track extraction |
 | `ServerClientTests.swift` | `NinebotServerClient`, against a stubbed `URLProtocol` |
@@ -83,12 +84,14 @@ request.
   `swift test` on a `macos-26` runner. The build and test steps are separate so
   a compile failure surfaces as raw compiler diagnostics rather than being
   buried in test output. If this job is red, the change is not ready.
-- **`xcode-build`** — advisory, marked `continue-on-error: true`. It attempts an
-  `xcodebuild` of the `mini-ninebot` app target against the iOS simulator SDK
-  with code signing disabled. It cannot be a gate: the project has no shared
-  schemes, no `DEVELOPMENT_TEAM`, placeholder bundle IDs, and an App Group
-  entitlement that a hosted runner cannot provision. Treat a failure here as
-  something to look at, not as a blocker.
+- **`xcode-build`** — advisory, marked `continue-on-error: true`. It builds the
+  `mini-ninebot` app target against the iOS simulator SDK with code signing
+  disabled, which does pass today. It stays advisory because it depends on
+  working around project configuration rather than on the configuration being
+  right: there are no shared schemes (so it builds `-target`, not `-scheme`),
+  there is no `DEVELOPMENT_TEAM`, the bundle IDs are placeholders, and the App
+  Group entitlement cannot be provisioned on a hosted runner. A failure here is
+  worth investigating but does not block; `unit-tests` is the gate.
 
 Both jobs run on `macos-26` and select Xcode 26.6 when present, falling back to
 the image default with a warning. The project sets
