@@ -14,10 +14,11 @@ android/
 
 依赖顺序：1.1 → 1.2 → 1.3。1.3 复用 1.2 的 `VehicleCommandRepository`，不要在磁贴里另写一份网络调用。
 
-> **两处对 iOS 现状的重要修正**（读之前先看）
+> **一处对 iOS 现状的重要修正**（读之前先看）
 >
-> 1. **电量环形图在 iOS 主卡片上不存在**。主卡片用的是 `BatteryProgressBar`（高 5pt 的线性胶囊条，`NinebotDashboardView.swift:1850-1867`）。环形只出现在旧版 `VehicleHeroCard` 的 `BatteryGauge`（62×62）和两个 Widget 里。本文 1.1 给出的环形规格是从那三处推导的**新规格**，属主动升级，不是直译。
-> 2. **`isDangerous` / `confirmationTitle` / `confirmationMessage` 在 iOS 侧是死代码**。全仓只有定义（`NinebotViewModel.swift:68/77/99`），没有任何调用点。`performVehicleAction`（`NinebotDashboardView.swift:192-197`）裸执行，**App 内既无确认弹窗也无生物识别**，安全性完全依赖系统对 App Intents 的 `authenticationPolicy` 拦截。Android 的「滑动确认 + BiometricPrompt」是**新增安全层**，这三个属性正好提供现成文案。
+> **`isDangerous` / `confirmationTitle` / `confirmationMessage` 在 iOS 侧是死代码**。全仓只有定义（`NinebotViewModel.swift:68/77/99`），没有任何调用点。`performVehicleAction`（`NinebotDashboardView.swift:192-197`）裸执行，**App 内既无确认弹窗也无生物识别**，安全性完全依赖系统对 App Intents 的 `authenticationPolicy` 拦截。Android 的「滑动确认 + BiometricPrompt」是**新增安全层**，这三个属性正好提供现成文案。
+>
+> **已定决策**：电量显示照抄 iOS 的线性细长条，不做环形图。寻车铃与磁贴控车均不做生物识别。
 
 ---
 
@@ -222,60 +223,70 @@ data class VehicleCardModel(
 
 枚举出界面、文案查 `strings.xml`。优先级判定放领域层，`when (powerStatus)` 到界面层再映射成字符串。
 
-#### 3.2 电量环形图（新规格）
+#### 3.2 电量条（照抄 iOS，不做环形图）
 
-| 参数 | 值 | 来源 |
-| --- | --- | --- |
-| 外径 | 132.dp | 新定 |
-| 线宽 | 12.dp | 由 Widget 环 5/72 比例放大 |
-| 起始角 | **-90°**（12 点） | `rotationEffect(-90)`，`NinebotWidgets.swift:591` |
-| 扫过角 | `360° × fraction` | `trim(from:0, to:fraction)` |
-| 线帽 | `StrokeCap.Round` | `:590` |
-| 轨道色 | `teslaControlBackground` | `:642` |
-| 进度色 | `gaugeColor` 20/50 三档 | `:5421-5426` |
-| 最小可见弧 | `max(fraction, 0.04)` | `AccessoryCircularStatus:993` |
-| 渐变 | **无，纯色** | iOS 电量环全是纯色 |
+iOS 的 `BatteryProgressBar` 完整实现只有 15 行（`NinebotDashboardView.swift:1850-1867`）：
 
-Compose 的 `drawArc` 里 `startAngle = 0f` 指 3 点、正值顺时针，与 SwiftUI `trim` + `rotationEffect(-90)` 组合语义一致，直接写 `-90f`。
+```swift
+GeometryReader { proxy in
+    ZStack(alignment: .leading) {
+        Capsule().fill(Color.teslaControlBackground)             // 轨道
+        Capsule().fill(Color.teslaGreen)                          // 进度
+            .frame(width: max(proxy.size.width * value, 8))       // ← 最小 8pt
+    }
+}
+.frame(height: 5)
+.accessibilityLabel("电量进度 \(Int(value * 100))%")
+```
+
+| 参数 | 值 |
+| --- | --- |
+| 高度 | 5 |
+| 形状 | Capsule（全圆角） |
+| 轨道色 | `teslaControlBackground` |
+| 进度色 | **恒为 `teslaGreen`** |
+| 最小进度宽 | **8**（0% 时也显示一个 8pt 的绿点，不是完全空） |
+| 无障碍 | `"电量进度 {n}%"` |
+| 动画 | **无** |
+
+**注意进度色不随电量分档**。这一条修正了本文 2.4 节的说法：细长条恒绿，2.4 里那三套配色阈值只用于**电量数字文本**（`batteryTextColor`，15/50 两档）；`gaugeColor`（20/50 三档）属于旧版 `BatteryGauge` 环形表，既然不做环形图，这一套**不需要移植**。Widget 侧那套（5.3）仍然独立。
 
 ```kotlin
 @Composable
-fun BatteryRing(
-    fraction: Float, batteryPercent: Int?, isCharging: Boolean,
-    modifier: Modifier = Modifier, diameter: Dp = 132.dp, stroke: Dp = 12.dp,
-) {
-    // iOS 的 BatteryProgressBar 不带动画，这里是有意升级
-    val animated by animateFloatAsState(
-        targetValue = fraction.coerceIn(0f, 1f).coerceAtLeast(MIN_VISIBLE_ARC),
-        animationSpec = tween(600, easing = FastOutSlowInEasing), label = "batteryRing",
-    )
-    Box(modifier.size(diameter), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            val w = stroke.toPx()
-            val arcSize = Size(size.width - w, size.height - w)
-            val topLeft = Offset(w / 2f, w / 2f)
-            drawArc(trackColor, 0f, 360f, false, topLeft, arcSize, style = Stroke(w))
-            drawArc(
-                progressColor, -90f, 360f * animated, false, topLeft, arcSize,
-                style = Stroke(w, cap = StrokeCap.Round),
-            )
-        }
+fun BatteryProgressBar(fraction: Float, modifier: Modifier = Modifier) {
+    val pct = (fraction * 100).roundToInt()
+    BoxWithConstraints(
+        modifier
+            .fillMaxWidth()
+            .height(5.dp)
+            .clip(CircleShape)
+            .background(NinePlusTheme.colors.controlBackground)
+            .semantics { contentDescription = "电量进度 $pct%" },
+    ) {
+        val minWidth = 8.dp
+        val target = maxWidth * fraction.coerceIn(0f, 1f)
+        Box(
+            Modifier
+                .width(if (target < minWidth) minWidth else target)
+                .fillMaxHeight()
+                .clip(CircleShape)
+                .background(NinePlusTheme.colors.green),
+        )
     }
 }
-private const val MIN_VISIBLE_ARC = 0.04f
 ```
-
-**若要渐变**：`Brush.sweepGradient` 的 0° 在 3 点，起点在 12 点就得整体 `rotate(-90f)`；且 sweep 在首尾相接处必有色缝，`fraction` 接近 1 时可见。iOS 那个用了渐变的 `RecordingSpeedGauge`（`NinebotRecordingView.swift:756-770`）没这问题，因为它用的是 `LinearGradient(.leading → .trailing)` 沿包围盒的**线性**渐变、且 270° 弧首尾不接。要复刻就用 `Brush.horizontalGradient`，别用 sweep。
 
 **动画对照**：
 
 | 效果 | iOS | Compose |
 | --- | --- | --- |
-| 电量变化 | **无动画**（width 直接跳变） | `tween(600, FastOutSlowInEasing)`，主动升级 |
+| 电量变化 | **无动画**，width 直接跳变 | 待定，见「动画一致性」一节 |
 | 充电闪电浮动 | `offset(y: ±1)`，`easeInOut(0.8).repeatForever(autoreverses:true)`（`:1951`） | `rememberInfiniteTransition` + `tween(800)`, `RepeatMode.Reverse` |
 | 充电流光 | 宽 42%、高 2pt，`LinearGradient(clear→green90%→clear)`，offset `-0.42w → +w`，`linear(1.35).repeatForever(autoreverses:false)`（`:1984-1997`） | `tween(1350, LinearEasing)`, `RepeatMode.Restart`, `graphicsLayer{translationX}`，父容器 `clipToBounds()` |
 
 `clipToBounds()` 必须加在**流光的父容器**上，加在流光自己身上无效。
+
+后两个循环动画是装饰性的，两端参数照抄即可，没有争议。有争议的只有电量变化和下拉刷新，见下节。
 
 #### 3.3 主卡片骨架
 
