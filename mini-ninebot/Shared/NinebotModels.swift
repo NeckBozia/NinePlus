@@ -1091,11 +1091,15 @@ struct NinebotVehicleState: Codable, Equatable {
         return isLocked ? "已锁" : "未锁"
     }
 
+    /// Wording for `powerStatus`.  The ordering lives with the enum.
     var powerText: String {
-        if isFullyCharged { return "已充满" }
-        if isCharging == true { return "充电中" }
-        guard let isPoweredOn else { return "离线" }
-        return isPoweredOn ? "已上电" : "已熄火"
+        switch powerStatus {
+        case .fullyCharged: return "已充满"
+        case .charging: return "充电中"
+        case .offline: return "离线"
+        case .poweredOn: return "已上电"
+        case .poweredOff: return "已熄火"
+        }
     }
 
     var primaryStatusText: String {
@@ -1129,16 +1133,20 @@ struct NinebotVehicleState: Codable, Equatable {
     }
 
     var estimatedChargeTo80TimeText: String {
-        guard isCharging == true else { return "未充电" }
-        guard let estimatedChargeTo80Minutes else { return "计算中" }
-        guard estimatedChargeTo80Minutes > 0 else { return "已超过 80%" }
-        return Self.durationText(minutes: estimatedChargeTo80Minutes)
+        switch chargeTo80Estimate {
+        case .notCharging: return "未充电"
+        case .calculating: return "计算中"
+        case .reached: return "已超过 80%"
+        case .minutes(let minutes): return Self.durationText(minutes: minutes)
+        }
     }
 
     var estimatedChargeTo80ClockText: String {
-        guard isCharging == true, let estimatedChargeTo80Minutes else { return "--" }
-        guard estimatedChargeTo80Minutes > 0 else { return "已超过 80%" }
-        return Self.clockFormatter.string(from: updatedAt.addingTimeInterval(estimatedChargeTo80Minutes * 60))
+        switch chargeTo80Clock {
+        case .unavailable: return "--"
+        case .reached: return "已超过 80%"
+        case .at(let date): return Self.clockFormatter.string(from: date)
+        }
     }
 
     var estimatedFullChargeMinutes: Double? {
@@ -1158,31 +1166,38 @@ struct NinebotVehicleState: Codable, Equatable {
     }
 
     var estimatedFullChargeTimeText: String {
-        guard isCharging == true else { return "未充电" }
-        guard let estimatedFullChargeMinutes else { return "计算中" }
-        guard estimatedFullChargeMinutes > 0 else { return "已充满" }
-        return Self.durationText(minutes: estimatedFullChargeMinutes)
+        switch fullChargeEstimate {
+        case .notCharging: return "未充电"
+        case .calculating: return "计算中"
+        case .reached: return "已充满"
+        case .minutes(let minutes): return Self.durationText(minutes: minutes)
+        }
     }
 
     var estimatedFullChargeClockText: String {
-        guard isCharging == true, let estimatedFullChargeMinutes else { return "--" }
-        guard estimatedFullChargeMinutes > 0 else { return "已充满" }
-        if let estimatedFullAt = serverPrediction?.charging.estimatedFullAt {
-            return Self.clockFormatter.string(from: estimatedFullAt)
+        switch fullChargeClock {
+        case .unavailable: return "--"
+        case .reached: return "已充满"
+        case .at(let date): return Self.clockFormatter.string(from: date)
         }
-        return Self.clockFormatter.string(from: updatedAt.addingTimeInterval(estimatedFullChargeMinutes * 60))
     }
 
     var chargeSummaryText: String {
-        if isFullyCharged { return "已充满" }
-        guard let isCharging else { return "充电未知" }
-        return isCharging ? "充电中 · 约 \(estimatedFullChargeTimeText) 充满" : "未充电"
+        switch chargingState {
+        case .fullyCharged: return "已充满"
+        case .charging: return "充电中 · 约 \(estimatedFullChargeTimeText) 充满"
+        case .notCharging: return "未充电"
+        case .unknown: return "充电未知"
+        }
     }
 
     var chargingStateText: String {
-        if isFullyCharged { return "已充满" }
-        guard let isCharging else { return "未知" }
-        return isCharging ? "充电中" : "未充电"
+        switch chargingState {
+        case .fullyCharged: return "已充满"
+        case .charging: return "充电中"
+        case .notCharging: return "未充电"
+        case .unknown: return "未知"
+        }
     }
 
     var isFullyCharged: Bool {
