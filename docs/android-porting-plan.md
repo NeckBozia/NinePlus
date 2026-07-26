@@ -144,7 +144,35 @@ ride_points  (ride_id FK, seq, timestamp, lat, lon, speed_kmh, accel_g, h_accura
 
 ## 服务端部署
 
-> 服务端（NinePlus Platform）**不在本仓库内**。`.gitignore` 排除了 `platform/` 和 `ninecli-source/` 两个本地目录，而全部 16 次提交、三个分支的历史里从未出现过服务端代码 —— 它只存在于作者本地。以下按客户端观察到的契约推断需求。
+### 服务端从未公开过
+
+查证结论：
+
+- 本仓库全部提交、三个分支、含已删除文件的完整历史里 **没有任何服务端代码**
+- `.gitignore` 排除了 `platform/`（即 NinePlus Platform）和 `ninecli-source/` 两个本地目录
+- 上游原仓库 [`JieFuHe/NinePlus`](https://github.com/JieFuHe/NinePlus) **同样只有 iOS 客户端**，README 只写「需要一个可达的 NinePlus Platform 服务器」，不提供地址或仓库链接
+
+也就是说官方服务端只存在于原作者本地，拿不到。
+
+### 现成的替代：社区兼容实现
+
+[`wuchiawuchi/nineplus-ha-server`](https://github.com/wuchiawuchi/nineplus-ha-server)（Python）实现了同一套契约，用 `ninecli` 直连九号云 —— 正好对应 `.gitignore` 里那行 `ninecli-source/`。
+
+| 项 | 情况 |
+| --- | --- |
+| 默认端口 | **19009**，与 App 设置页的占位符完全一致 |
+| 已实现 | `/healthz`、登录、车辆列表、dashboard、状态、电池、行程详情、寻车铃 / 开座桶 / 上电 / 熄火 |
+| 部署 | 一键脚本 / Docker Compose / 直接 `python3 server.py` |
+| 配置 | `NINEPLUS_BACKEND=direct`、`NINEPLUS_BEARER_TOKEN`、`NINEPLUS_ADMIN_PASSWORD` |
+| 依赖 | Docker，内部用 `ninecli==0.1.7`；需要九号账号密码换取令牌 |
+| **未实现** | APNs 推送、Live Activity、续航/充电预测模型 |
+
+两处缺失对本项目影响有限：
+
+- **预测模型缺失不影响可用性**。客户端对 `serverPrediction` 做了完整的 nil 兜底，会退回本地常量估算（`fastMinutesPerPercent` 等），只是精度下降。
+- **推送缺失符合 Phase 1 的选型**（见 1.7），本来就建议自用场景不做推送。
+
+以下按客户端观察到的契约描述服务端职责，供自建或改造社区实现时参考。
 
 ### 从客户端契约推断的服务端职责
 

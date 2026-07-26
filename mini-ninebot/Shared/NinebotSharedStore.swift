@@ -557,7 +557,17 @@ struct NinebotSharedStore {
     }
 
     private func saveChargingLiveActivityPushTokenRecords(_ records: [NinebotLiveActivityPushTokenRecord]) {
-        let recentRecords = Array(records.sorted { $0.updatedAt > $1.updatedAt }.prefix(12))
+        let sortedRecords = records.sorted { $0.updatedAt > $1.updatedAt }
+        let recentRecords = Array(sortedRecords.prefix(12))
+
+        // Dropping a record has to drop its standalone token key too. Every
+        // other removal path keeps the two in step; without this the key is
+        // orphaned, and since prune and removeAll both walk the records list,
+        // nothing can ever reach it again.
+        for dropped in sortedRecords.dropFirst(recentRecords.count) {
+            defaults.removeObject(forKey: chargingLiveActivityPushTokenKey(activityID: dropped.activityID))
+        }
+
         guard let data = try? encoder.encode(recentRecords) else { return }
         defaults.set(data, forKey: Key.chargingLiveActivityPushTokenRecords)
     }

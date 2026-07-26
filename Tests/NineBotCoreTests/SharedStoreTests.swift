@@ -664,6 +664,54 @@ final class SharedStoreTests: XCTestCase {
         XCTAssertTrue(records.contains { $0.activityID == "A14" })
     }
 
+    /// Trimming to the 12-record ceiling must also delete the dropped
+    /// activities' standalone token keys. If it does not, those keys are
+    /// orphaned — absent from the records list, so neither prune nor removeAll
+    /// can reach them, and they persist forever.
+    func testTrimmingTokenRecordsAlsoDropsTheirTokenKeys() {
+        for index in 0..<15 {
+            store.saveChargingLiveActivityPushToken(
+                "token-\(index)",
+                activityID: "A\(index)",
+                vehicleSN: "S\(index)"
+            )
+        }
+
+        let survivingIDs = Set(store.loadChargingLiveActivityPushTokenRecords().map(\.activityID))
+        XCTAssertEqual(survivingIDs.count, 12)
+
+        for index in 0..<15 where !survivingIDs.contains("A\(index)") {
+            XCTAssertNil(
+                store.loadChargingLiveActivityPushToken(activityID: "A\(index)"),
+                "A\(index) was trimmed from the records but its token key survived"
+            )
+        }
+
+        // And a record that survived the trim still resolves.
+        for id in survivingIDs {
+            XCTAssertNotNil(store.loadChargingLiveActivityPushToken(activityID: id))
+        }
+    }
+
+    /// removeAll walks the records list, so it can only be complete if trimming
+    /// never leaves anything behind.
+    func testRemoveAllClearsEveryTokenEvenAfterTrimming() {
+        for index in 0..<15 {
+            store.saveChargingLiveActivityPushToken(
+                "token-\(index)",
+                activityID: "A\(index)",
+                vehicleSN: "S\(index)"
+            )
+        }
+
+        store.removeAllChargingLiveActivityPushTokens()
+
+        XCTAssertTrue(store.loadChargingLiveActivityPushTokenRecords().isEmpty)
+        for index in 0..<15 {
+            XCTAssertNil(store.loadChargingLiveActivityPushToken(activityID: "A\(index)"))
+        }
+    }
+
     // MARK: - Last error
 
     func testLastErrorRoundTrips() {
