@@ -334,7 +334,7 @@ WorkManager 和前台服务在小米/华为/OPPO 上会被后台管控掐掉。�
 
 ### 定位配置对齐
 
-iOS 侧的 `CLLocationManager` 配置（`NinebotRecordingView.swift:178-181`）：
+iOS 侧的 `CLLocationManager` 配置（`mini-ninebot/mini-ninebot/Domain/NinebotRideRecorder.swift:68-71`）：
 
 | iOS | Android `LocationRequest` |
 | --- | --- |
@@ -343,8 +343,12 @@ iOS 侧的 `CLLocationManager` 配置（`NinebotRecordingView.swift:178-181`）�
 | `distanceFilter = 1` | `setMinUpdateDistanceMeters(1f)` |
 | `pausesLocationUpdatesAutomatically = false` | 默认不暂停，无需设置 |
 
-**定位 SDK 待定，见 [pending-decisions.md](./pending-decisions.md) 的 D8。**
-`FusedLocationProviderClient` 依赖 Google Play 服务，无 GMS 的设备上不可用；高德定位 SDK 不依赖 GMS 且直接返回 GCJ-02，能省掉坐标转换。开工前必须先定。
+**定位 SDK 已定（D8）：高德定位优先，回退 Google `FusedLocationProviderClient`。**
+`FusedLocationProviderClient` 依赖 Google Play 服务，无 GMS 的设备上不可用；高德定位 SDK 不依赖 GMS 且直接返回 GCJ-02，能省掉坐标转换。
+
+**遗留一条**：两个都拿不到定位时垫不垫原生 `LocationManager`，见 `phase4-sensors-spec.md` 的 P2，本节 0.6 实测后定。
+
+高德 SDK 没有 `speedAccuracy`，而 iOS 的速度来源判定第一条分支就是看它 —— 走高德路径时速度会全程由位移反推。细节在 `phase4-sensors-spec.md`。
 
 ### 验收
 
