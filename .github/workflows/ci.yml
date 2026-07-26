@@ -73,29 +73,35 @@ jobs:
         run: swift test
 
   # ---------------------------------------------------------------------------
-  # Advisory only -- see `continue-on-error` below.
+  # The second gate, and the only one that compiles the interface layer.
   #
-  # The toolchain requirement is genuinely satisfiable: macos-26 carries Xcode
-  # 26.6, whose iOS 26.5 SDK matches IPHONEOS_DEPLOYMENT_TARGET = 26.5. What is
-  # *not* verifiable ahead of time is the project configuration itself:
+  # `unit-tests` above builds the NineBotCore SPM target, which covers
+  # mini-ninebot/Shared only. Everything under mini-ninebot/mini-ninebot and
+  # mini-ninebot/NinebotWidgets -- the views, the view model, the widgets -- is
+  # compiled here and nowhere else. A signature change that misses a call site
+  # in a view is invisible to `swift test`, which is exactly how one shipped.
+  #
+  # This was advisory at first because the project's configuration looked hard
+  # to build headlessly. Each of those worries has an answer, and the job has
+  # been passing consistently, so it now gates:
   #
   #   * mini-ninebot.xcodeproj contains no shared schemes (no xcshareddata/
   #     xcschemes directory), so `xcodebuild -scheme` cannot be used at all.
   #     This job builds `-target` directly, which needs no scheme.
   #   * The targets use CODE_SIGN_STYLE = Automatic with no DEVELOPMENT_TEAM and
-  #     placeholder bundle IDs (com.example.NineBotPlus). Signing is therefore
-  #     disabled and the build is aimed at the simulator SDK.
-  #   * The app requires an App Group entitlement that cannot be provisioned on
-  #     a hosted runner.
+  #     placeholder bundle IDs (com.example.NineBotPlus). The CODE_SIGNING_*
+  #     overrides below disable signing entirely.
+  #   * The App Group entitlement cannot be provisioned on a hosted runner,
+  #     which is why CODE_SIGN_ENTITLEMENTS is cleared. Entitlements affect
+  #     signing, not compilation, so nothing about the type check is weakened.
   #
-  # Because of that, a failure here is a signal to investigate, not a reason to
-  # block a pull request. `unit-tests` above is the job that gates.
+  # Building the app target also builds NinebotWidgets, which is embedded as a
+  # dependency, so both targets are covered by this one invocation.
   # ---------------------------------------------------------------------------
   xcode-build:
-    name: Xcode build (advisory)
+    name: Xcode build
     runs-on: macos-26
     timeout-minutes: 45
-    continue-on-error: true
 
     steps:
       - name: Checkout
@@ -119,6 +125,13 @@ jobs:
 
       # Simulator SDK + CODE_SIGNING_ALLOWED=NO keeps this free of any signing
       # identity, provisioning profile, or developer team.
+      #
+      # ARCHS=arm64 pins the build to the runner's own architecture. The runner
+      # is Apple silicon, and ONLY_ACTIVE_ARCH=YES could not resolve an active
+      # architecture without a scheme, so it fell back to building every
+      # applicable one -- compiling the whole project twice, arm64 and x86_64,
+      # for no added signal. Now that this job gates, that doubled wall-clock is
+      # worth removing.
       - name: Build app target
         working-directory: mini-ninebot
         run: |
@@ -132,4 +145,5 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGN_ENTITLEMENTS="" \
-            ONLY_ACTIVE_ARCH=YES
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO
