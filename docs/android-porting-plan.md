@@ -124,19 +124,27 @@ ride_points  (ride_id FK, seq, timestamp, lat, lon, speed_kmh, accel_g, h_accura
 
 **国产 ROM 保活**：WorkManager 在小米/华为/OPPO 上会被后台管控掐掉。需要加电池优化白名单引导页，并在设置里提供「后台刷新不工作？」的排查入口。
 
-### 1.7 推送通道选型（关键决策，影响服务端部署）
+### 1.7 推送通道选型
 
-不建议用 Google FCM。理由见「服务端部署」一节的网络可达性分析。
+**自用单用户场景，最省事的答案是：先不做推送。**
 
-推荐：**厂商推送聚合**。小米走 MiPush、华为走 HMS Push、OPPO/vivo 各自的通道，其余机型用长连接兜底或降级为纯轮询。可以用统一推送联盟（UnifiedPush）或第三方聚合 SDK（个推、极光）省掉逐家对接。
+推送解决的是「App 完全没运行时也能即时收到变化」。但这个 App 的数据源本来就是自建服务端的轮询结果，客户端并不需要毫秒级即时性：
 
-这个选择还有一个附带好处：Phase 2 要做的小米超级岛**本来就必须接 MiPush**，Phase 1 接了就是提前铺路。
+- 常规刷新 → WorkManager 定时拉，间隔沿用 iOS 那套自适应策略（充电 15 / 使用中 20 / 空闲 30 分钟）
+- 充电中的实时活动 → 充电时起一个前台服务，自己每分钟拉一次并更新通知，岛就随之更新。**本地通知足以驱动 `ProgressStyle` 和 `miui.focus.param`**，不需要任何推送通道
+
+这样 Phase 1 完全不碰推送，省掉厂商 SDK 对接、资质申请、服务端多通道适配三件事。代价是 App 被系统杀死后不会被唤醒——对自用来说通常可以接受，真需要时再补。
+
+如果之后确实要推送，按这个顺序考虑：
+
+1. **厂商推送**（小米 MiPush / 华为 HMS / OPPO）—— 服务端可留国内，且 MiPush 顺带打通超级岛的服务端下发路径
+2. **Google FCM** —— 需要能连 `fcm.googleapis.com`。若主服务端在国内，可以让它把推送请求转发给一台海外小机器代发，主链路（轮询九号云、存数据、APNs）仍留国内，两边各自走最优网络
 
 ---
 
 ## 服务端部署
 
-> 服务端（NinePlus Platform）不在本仓库内，以下按客户端观察到的契约推断需求。**技术栈和现有部署方式需要确认**，会影响具体选型。
+> 服务端（NinePlus Platform）**不在本仓库内**。`.gitignore` 排除了 `platform/` 和 `ninecli-source/` 两个本地目录，而全部 16 次提交、三个分支的历史里从未出现过服务端代码 —— 它只存在于作者本地。以下按客户端观察到的契约推断需求。
 
 ### 从客户端契约推断的服务端职责
 
@@ -151,6 +159,17 @@ ride_points  (ride_id FK, seq, timestamp, lat, lon, speed_kmh, accel_g, h_accura
 ### 资源需求（个人自用规模）
 
 轮询几台车、单用户，压力极小。**1 核 1G 就够**，瓶颈在常驻可用性而不是算力。数据库用 SQLite 或 PostgreSQL 均可；预测模型是轻量统计回归（从 `km_per_percent`、`fast_minutes_per_percent` 这些字段看），不需要 GPU。
+
+已有的腾讯云 **2C4G / 60GB SSD / 6Mbps / 500GB 月流量** 绰绰有余：
+
+| 资源 | 估算用量 | 结论 |
+| --- | --- | --- |
+| CPU / 内存 | Node 或 Python 常驻进程 + 轻量数据库，几百 MB | 富余一个数量级 |
+| 磁盘 | 状态快照 + 行程历史，按几台车几年算也只有数百 MB | 富余 |
+| 带宽 | 轮询与推送都是 KB 级小请求，峰值远不到 1 Mbps | 富余 |
+| 流量 | 每分钟轮询一次 × 5KB ≈ 216 MB/月，加 App 请求撑死几 GB | 用不到 5% |
+
+唯一需要留意的是 6 Mbps 是**峰值带宽**，如果以后往同一台机器上塞别的服务再评估。
 
 ### 网络可达性——这是选型的决定因素
 
@@ -227,18 +246,26 @@ iOS Live Activity 的 `ContentState` 有 8 个字段：`battery`、`estimatedRan
 
 服务端下发逻辑可以直接复用现有的 Live Activity 那套——判断条件相同（`isCharging && !isFullyCharged && battery != nil`），只是 payload 格式不同。iOS 侧已有的 token 管理、staleDate 策略、单车约束都可以照搬思路。
 
-### 2.3 覆盖面与保底
+### 2.3 覆盖面 —— 标准 API 比想象中管用
 
-超级岛是**小米私有能力，只覆盖小米设备**。其他厂商：
+先做 **Android 16 `Notification.ProgressStyle`（Live Updates）**，这不只是保底：
 
-| 厂商 | 对应能力 | 状态 |
+| 厂商 | 对应能力 | 标准 API 是否够用 |
 | --- | --- | --- |
-| 小米 HyperOS 2/3 | 焦点通知 / 超级岛 | Phase 2 做 |
-| 华为 HarmonyOS | 实况窗（Live View） | 需单独接，接口不同 |
-| OPPO / vivo | 各自的实时活动 | 需单独接 |
-| 其他 | Android 16 `Notification.ProgressStyle`（Live Updates） | **跨厂商保底方案，先做这个** |
+| OPPO ColorOS 16 | 流体云 | ✅ **够**。ColorOS 16 的流体云已对接 Android 16 Live Updates，遵循 Google 实时活动规范的应用可直接适配，**无需单独接 OPPO** |
+| 小米 HyperOS 3 | 超级岛 | ⚠️ 待实测。HyperOS 3 基于 Android 16，标准 API 本身可用，但小米主推私有的 `miui.focus.param`，是否自动映射到超级岛官方没说明 |
+| 华为 HarmonyOS | 实况窗 | ❌ 需单独接，接口不同 |
+| vivo OriginOS | 原子岛 | ❔ 未查证 |
+| 其余机型 | 标准通知 | ✅ 至少是常驻进度通知 |
 
-建议顺序：先做 Android 16 `ProgressStyle` 保底（所有机型可用），再叠加小米超级岛（体验最好），华为/OPPO/vivo 按用户分布决定是否投入。
+所以顺序是：**先做 `ProgressStyle`，实测各机型效果，再决定要不要为小米单独写 `miui.focus.param` 分支**。OPPO 基本可以不用管。
+
+### 2.4 关于小米权限：两条路径要分清
+
+- **MiPush 服务端下发焦点通知** —— 确定需要向小米申请资质（邮件 `mipush-permission@xiaomi.com`），要提交通知触发场景截图、焦点通知设计效果图、交互设计、使用期限和使用声明。面向正式产品，自用未上架的应用大概率走不通。
+- **本地通知 + `miui.focus.param`** —— App 进程活跃时按原生方式发通知并写入 extras 即可，不经过小米服务器。社区实践显示可以自测生效，但系统里存在一个 `hasFocusPermission()` 查询接口，说明确实有权限位；它究竟是用户可开的开关还是小米下发的应用白名单，公开文档没讲清楚。
+
+**自用场景的正确做法是先实测**：写个二十行的 demo，发一条带 `miui.focus.param` 的本地通知，在自己的机器上看岛出不出来。这比任何调研都准，成本也低。
 
 ### 2.4 前台服务约束
 
