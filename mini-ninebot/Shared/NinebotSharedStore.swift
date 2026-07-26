@@ -213,18 +213,60 @@ struct NinebotSharedStore {
         return points.sorted { $0.date < $1.date }
     }
 
+    /// Ride summaries without track points.  Track points are stored per ride
+    /// under `RideTracks/` so the defaults payload stays small no matter how
+    /// long the rides are — a few hundred bytes per ride instead of megabytes.
     func loadRecordedRides() -> [NinebotRecordedRide] {
         guard let data = defaults.data(forKey: Key.recordedRides),
               let rides = try? decoder.decode([NinebotRecordedRide].self, from: data) else {
             return []
         }
+
+        // Records written before the split still carry their points inline.
+        if rides.contains(where: { !$0.points.isEmpty }) {
+            let migrated = rides.map { ride in
+                writeTrackPoints(ride.points, id: ride.id)
+                return ride.trackSummary()
+            }
+            persistRecordedRideSummaries(migrated)
+            return migrated.sorted { $0.startedAt > $1.startedAt }
+        }
+
         return rides.sorted { $0.startedAt > $1.startedAt }
     }
 
+    /// A single ride with its track points read back from disk.
+    func loadRecordedRide(id: String) -> NinebotRecordedRide? {
+        guard let summary = loadRecordedRides().first(where: { $0.id == id }) else { return nil }
+        return summary.withTrack(loadTrackPoints(id: id))
+    }
+
+    func loadTrackPoints(id: String) -> [NinebotRideTrackPoint] {
+        guard let url = trackPointsURL(id: id),
+              let data = try? Data(contentsOf: url),
+              let points = try? decoder.decode([NinebotRideTrackPoint].self, from: data) else {
+            return []
+        }
+        return points
+    }
+
     func saveRecordedRides(_ rides: [NinebotRecordedRide]) {
-        let limited = Array(rides.sorted { $0.startedAt > $1.startedAt }.prefix(120))
-        guard let data = try? encoder.encode(limited) else { return }
-        defaults.set(data, forKey: Key.recordedRides)
+        let sorted = rides.sorted { $0.startedAt > $1.startedAt }
+        let retained = Array(sorted.prefix(120))
+
+        for ride in sorted.dropFirst(retained.count) {
+            removeTrackPoints(id: ride.id)
+        }
+
+        let summaries = retained.map { ride -> NinebotRecordedRide in
+            // An unloaded summary must not overwrite the track already on disk.
+            if !ride.points.isEmpty || ride.trackPointCount == 0 {
+                writeTrackPoints(ride.points, id: ride.id)
+            }
+            return ride.trackSummary()
+        }
+
+        persistRecordedRideSummaries(summaries)
     }
 
     func upsertRecordedRide(_ ride: NinebotRecordedRide) {
@@ -239,7 +281,57 @@ struct NinebotSharedStore {
 
     func deleteRecordedRide(id: String) {
         let rides = loadRecordedRides().filter { $0.id != id }
+        removeTrackPoints(id: id)
         saveRecordedRides(rides)
+    }
+
+    func recordedTrackByteCount() -> Int {
+        guard let directory = trackPointsDirectoryURL(),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else {
+            return 0
+        }
+        return names.reduce(0) { total, name in
+            let attributes = try? FileManager.default.attributesOfItem(
+                atPath: directory.appendingPathComponent(name).path
+            )
+            return total + ((attributes?[.size] as? Int) ?? 0)
+        }
+    }
+
+    private func persistRecordedRideSummaries(_ summaries: [NinebotRecordedRide]) {
+        guard let data = try? encoder.encode(summaries) else { return }
+        defaults.set(data, forKey: Key.recordedRides)
+    }
+
+    private func writeTrackPoints(_ points: [NinebotRideTrackPoint], id: String) {
+        guard let url = trackPointsURL(id: id) else { return }
+
+        guard !points.isEmpty else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+
+        guard let data = try? encoder.encode(points) else { return }
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? data.write(to: url, options: .atomic)
+    }
+
+    private func removeTrackPoints(id: String) {
+        guard let url = trackPointsURL(id: id) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    private func trackPointsDirectoryURL() -> URL? {
+        let baseURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: NinebotAppGroup.identifier)
+            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        return baseURL?.appendingPathComponent("RideTracks", isDirectory: true)
+    }
+
+    private func trackPointsURL(id: String) -> URL? {
+        trackPointsDirectoryURL()?.appendingPathComponent("\(sanitizedFileName(id)).json")
     }
 
     func saveLastError(_ message: String) {
@@ -465,7 +557,17 @@ struct NinebotSharedStore {
     }
 
     private func saveChargingLiveActivityPushTokenRecords(_ records: [NinebotLiveActivityPushTokenRecord]) {
-        let recentRecords = Array(records.sorted { $0.updatedAt > $1.updatedAt }.prefix(12))
+        let sortedRecords = records.sorted { $0.updatedAt > $1.updatedAt }
+        let recentRecords = Array(sortedRecords.prefix(12))
+
+        // Dropping a record has to drop its standalone token key too. Every
+        // other removal path keeps the two in step; without this the key is
+        // orphaned, and since prune and removeAll both walk the records list,
+        // nothing can ever reach it again.
+        for dropped in sortedRecords.dropFirst(recentRecords.count) {
+            defaults.removeObject(forKey: chargingLiveActivityPushTokenKey(activityID: dropped.activityID))
+        }
+
         guard let data = try? encoder.encode(recentRecords) else { return }
         defaults.set(data, forKey: Key.chargingLiveActivityPushTokenRecords)
     }

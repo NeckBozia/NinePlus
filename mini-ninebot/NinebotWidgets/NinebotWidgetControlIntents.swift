@@ -16,6 +16,18 @@ private enum NinebotWidgetVehicleAction {
         case .engineStop: return "关锁"
         }
     }
+
+    /// The ASCII identity recorded in the diagnostics log. Matches the app
+    /// target's `NinebotVehicleAction.refreshOperation` so both processes write
+    /// the same code for the same command.
+    var refreshOperation: NinebotRefreshOperation {
+        switch self {
+        case .bell: return .bell
+        case .openBucket: return .openBucket
+        case .engineStart: return .engineStart
+        case .engineStop: return .engineStop
+        }
+    }
 }
 
 struct NinebotWidgetRefreshIntent: AppIntent {
@@ -93,11 +105,11 @@ private enum NinebotWidgetIntentRunner {
             let cached = store.loadDashboard()
             let dashboard = try await client.fetchDashboard(selectedSN: cached?.selectedSN)
             let archivedDashboard = store.saveDashboard(dashboard)
-            recordWidgetEvent(store: store, startedAt: startedAt, operation: "刷新车况", success: true, message: archivedDashboard.primaryVehicle?.vehicle.name)
+            recordWidgetEvent(store: store, startedAt: startedAt, operation: .dashboard, success: true, message: archivedDashboard.primaryVehicle?.vehicle.name)
             WidgetCenter.shared.reloadAllTimelines()
             return archivedDashboard.primaryVehicle?.vehicle.name ?? "九号"
         } catch {
-            recordWidgetEvent(store: store, startedAt: startedAt, operation: "刷新车况", success: false, message: error.localizedDescription)
+            recordWidgetEvent(store: store, startedAt: startedAt, operation: .dashboard, success: false, message: error.localizedDescription)
             throw error
         }
     }
@@ -125,11 +137,11 @@ private enum NinebotWidgetIntentRunner {
 
             let refreshed = try await client.fetchDashboard(selectedSN: vehicle.sn)
             store.saveDashboard(refreshed)
-            recordWidgetEvent(store: store, startedAt: startedAt, operation: action.title, success: true, message: vehicle.name)
+            recordWidgetEvent(store: store, startedAt: startedAt, operation: action.refreshOperation, success: true, message: vehicle.name)
             WidgetCenter.shared.reloadAllTimelines()
             return vehicle.name
         } catch {
-            recordWidgetEvent(store: store, startedAt: startedAt, operation: action.title, success: false, message: error.localizedDescription)
+            recordWidgetEvent(store: store, startedAt: startedAt, operation: action.refreshOperation, success: false, message: error.localizedDescription)
             throw error
         }
     }
@@ -161,12 +173,12 @@ private enum NinebotWidgetIntentRunner {
     private static func recordWidgetEvent(
         store: NinebotSharedStore,
         startedAt: Date,
-        operation: String,
+        operation: NinebotRefreshOperation,
         success: Bool,
         message: String?
     ) {
         store.saveLastWidgetRefreshEvent(NinebotRefreshEvent(
-            source: "Widget",
+            source: .widget,
             operation: operation,
             startedAt: startedAt,
             endedAt: Date(),

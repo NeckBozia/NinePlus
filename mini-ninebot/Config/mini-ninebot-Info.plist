@@ -36,7 +36,7 @@
 	<key>NSSiriUsageDescription</key>
 	<string>用于通过 Siri 和快捷指令刷新车况、查询电量、查询位置、寻车铃、开座桶、上电和熄火。</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>用于记录骑行轨迹、实时速度和加速 G 值。</string>
+	<string>用于记录骑行轨迹、实时速度和加速 G 值。开始记录后即使锁屏或切换到其他应用也会继续记录，状态栏会显示蓝色指示条。</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
@@ -51,6 +51,10 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<!-- Ride recording keeps running while backgrounded or locked.  This
+		     entry is mandatory: setting allowsBackgroundLocationUpdates without
+		     it traps at runtime. -->
+		<string>location</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>

@@ -56,8 +56,8 @@ struct NinebotLoginResult: Codable, Equatable {
 }
 
 struct NinebotRefreshEvent: Codable, Equatable {
-    var source: String
-    var operation: String
+    var source: NinebotRefreshSource
+    var operation: NinebotRefreshOperation
     var startedAt: Date
     var endedAt: Date
     var success: Bool
@@ -867,6 +867,10 @@ struct NinebotRecordedRide: Codable, Equatable, Identifiable {
     var averageSpeedKmh: Double
     var maxAccelerationG: Double
     var points: [NinebotRideTrackPoint]
+    // Track points live in their own file, so a summary loaded for a list row
+    // carries the count without the points themselves.  Optional to stay
+    // decodable against records written before the split.
+    var pointCount: Int?
 
     init(
         id: String = UUID().uuidString,
@@ -878,7 +882,8 @@ struct NinebotRecordedRide: Codable, Equatable, Identifiable {
         maxSpeedKmh: Double,
         averageSpeedKmh: Double,
         maxAccelerationG: Double,
-        points: [NinebotRideTrackPoint]
+        points: [NinebotRideTrackPoint],
+        pointCount: Int? = nil
     ) {
         self.id = id
         self.vehicleSN = vehicleSN
@@ -890,10 +895,41 @@ struct NinebotRecordedRide: Codable, Equatable, Identifiable {
         self.averageSpeedKmh = averageSpeedKmh
         self.maxAccelerationG = maxAccelerationG
         self.points = points
+        self.pointCount = pointCount ?? points.count
     }
 
     var durationSeconds: TimeInterval {
         max(endedAt.timeIntervalSince(startedAt), 0)
+    }
+
+    /// Number of recorded track points, available without loading the track.
+    var trackPointCount: Int {
+        pointCount ?? points.count
+    }
+
+    /// A summary carries no points; anything that draws the track must load it first.
+    var isTrackLoaded: Bool {
+        !points.isEmpty || trackPointCount == 0
+    }
+
+    /// Summary form persisted alongside the other records.  `distanceMeters` is
+    /// frozen to the recalculated value so a summary reports the same distance
+    /// the full record would.
+    func trackSummary() -> NinebotRecordedRide {
+        var summary = self
+        summary.distanceMeters = displayDistanceMeters
+        // Summarising an already-summarised record must not report zero points
+        // just because the track is not currently in memory.
+        summary.pointCount = points.isEmpty ? trackPointCount : points.count
+        summary.points = []
+        return summary
+    }
+
+    func withTrack(_ points: [NinebotRideTrackPoint]) -> NinebotRecordedRide {
+        var record = self
+        record.points = points
+        record.pointCount = points.isEmpty ? trackPointCount : points.count
+        return record
     }
 
     var distanceKilometers: Double {
@@ -1055,11 +1091,15 @@ struct NinebotVehicleState: Codable, Equatable {
         return isLocked ? "已锁" : "未锁"
     }
 
+    /// Wording for `powerStatus`.  The ordering lives with the enum.
     var powerText: String {
-        if isFullyCharged { return "已充满" }
-        if isCharging == true { return "充电中" }
-        guard let isPoweredOn else { return "离线" }
-        return isPoweredOn ? "已上电" : "已熄火"
+        switch powerStatus {
+        case .fullyCharged: return "已充满"
+        case .charging: return "充电中"
+        case .offline: return "离线"
+        case .poweredOn: return "已上电"
+        case .poweredOff: return "已熄火"
+        }
     }
 
     var primaryStatusText: String {
@@ -1093,16 +1133,20 @@ struct NinebotVehicleState: Codable, Equatable {
     }
 
     var estimatedChargeTo80TimeText: String {
-        guard isCharging == true else { return "未充电" }
-        guard let estimatedChargeTo80Minutes else { return "计算中" }
-        guard estimatedChargeTo80Minutes > 0 else { return "已超过 80%" }
-        return Self.durationText(minutes: estimatedChargeTo80Minutes)
+        switch chargeTo80Estimate {
+        case .notCharging: return "未充电"
+        case .calculating: return "计算中"
+        case .reached: return "已超过 80%"
+        case .minutes(let minutes): return Self.durationText(minutes: minutes)
+        }
     }
 
     var estimatedChargeTo80ClockText: String {
-        guard isCharging == true, let estimatedChargeTo80Minutes else { return "--" }
-        guard estimatedChargeTo80Minutes > 0 else { return "已超过 80%" }
-        return Self.clockFormatter.string(from: updatedAt.addingTimeInterval(estimatedChargeTo80Minutes * 60))
+        switch chargeTo80Clock {
+        case .unavailable: return "--"
+        case .reached: return "已超过 80%"
+        case .at(let date): return Self.clockFormatter.string(from: date)
+        }
     }
 
     var estimatedFullChargeMinutes: Double? {
@@ -1122,31 +1166,38 @@ struct NinebotVehicleState: Codable, Equatable {
     }
 
     var estimatedFullChargeTimeText: String {
-        guard isCharging == true else { return "未充电" }
-        guard let estimatedFullChargeMinutes else { return "计算中" }
-        guard estimatedFullChargeMinutes > 0 else { return "已充满" }
-        return Self.durationText(minutes: estimatedFullChargeMinutes)
+        switch fullChargeEstimate {
+        case .notCharging: return "未充电"
+        case .calculating: return "计算中"
+        case .reached: return "已充满"
+        case .minutes(let minutes): return Self.durationText(minutes: minutes)
+        }
     }
 
     var estimatedFullChargeClockText: String {
-        guard isCharging == true, let estimatedFullChargeMinutes else { return "--" }
-        guard estimatedFullChargeMinutes > 0 else { return "已充满" }
-        if let estimatedFullAt = serverPrediction?.charging.estimatedFullAt {
-            return Self.clockFormatter.string(from: estimatedFullAt)
+        switch fullChargeClock {
+        case .unavailable: return "--"
+        case .reached: return "已充满"
+        case .at(let date): return Self.clockFormatter.string(from: date)
         }
-        return Self.clockFormatter.string(from: updatedAt.addingTimeInterval(estimatedFullChargeMinutes * 60))
     }
 
     var chargeSummaryText: String {
-        if isFullyCharged { return "已充满" }
-        guard let isCharging else { return "充电未知" }
-        return isCharging ? "充电中 · 约 \(estimatedFullChargeTimeText) 充满" : "未充电"
+        switch chargingState {
+        case .fullyCharged: return "已充满"
+        case .charging: return "充电中 · 约 \(estimatedFullChargeTimeText) 充满"
+        case .notCharging: return "未充电"
+        case .unknown: return "充电未知"
+        }
     }
 
     var chargingStateText: String {
-        if isFullyCharged { return "已充满" }
-        guard let isCharging else { return "未知" }
-        return isCharging ? "充电中" : "未充电"
+        switch chargingState {
+        case .fullyCharged: return "已充满"
+        case .charging: return "充电中"
+        case .notCharging: return "未充电"
+        case .unknown: return "未知"
+        }
     }
 
     var isFullyCharged: Bool {
@@ -1237,15 +1288,16 @@ struct NinebotVehicleState: Codable, Equatable {
     }
 
     var rangeEstimateAccuracyDetailText: String {
-        if let serverCount = serverPrediction?.range.sampleCount,
-           serverCount > 0 {
-            if serverPrediction?.range.accuracySource == "measured" {
-                let verifiedCount = serverPrediction?.range.measuredSampleCount ?? serverCount
-                return "实测预测误差 · \(verifiedCount) 次已验证行程"
-            }
-            return "算法服务端 · \(serverCount) 次有效行程"
+        switch rangeAccuracyDetail {
+        case .measured(let verifiedCount):
+            return "实测预测误差 · \(verifiedCount) 次已验证行程"
+        case .algorithmic(let sampleCount):
+            return "算法服务端 · \(sampleCount) 次有效行程"
+        case .insufficientSamples:
+            return "服务端样本不足"
+        case .noPrediction:
+            return "服务端未返回算法指标"
         }
-        return serverPrediction == nil ? "服务端未返回算法指标" : "服务端样本不足"
     }
 
     var rangeModelSummaryText: String {
@@ -1254,19 +1306,18 @@ struct NinebotVehicleState: Codable, Equatable {
     }
 
     var rangeModelInsightText: String {
-        if usesServerAlgorithmEstimate {
-            if serverPrediction?.range.source == "default" {
-                return "服务端样本不足，当前使用默认算法估算。"
-            }
-            if let accuracy = rangeEstimateAccuracy, accuracy >= 0.82 {
-                return "服务端近期样本稳定，估算可信。"
-            }
+        switch rangeEstimateQuality {
+        case .serverDefault:
+            return "服务端样本不足，当前使用默认算法估算。"
+        case .serverConfident:
+            return "服务端近期样本稳定，估算可信。"
+        case .serverCalibrating:
             return "服务端已根据近期行程持续校准。"
-        }
-        if serverPrediction != nil {
+        case .serverUnavailable:
             return "服务端未给出可用算法续航，当前显示官方预估。"
+        case .missing:
+            return "服务端未返回算法预测，当前显示官方预估。"
         }
-        return "服务端未返回算法预测，当前显示官方预估。"
     }
 
     var localEstimatedMileage: Double? {
@@ -1301,18 +1352,14 @@ struct NinebotVehicleState: Codable, Equatable {
     }
 
     var localEstimateBasisText: String {
-        if let prediction = serverPrediction,
-           let estimatedRange = prediction.range.estimatedRange,
-           estimatedRange >= 0 {
-            let sampleText = prediction.range.sampleCount.map { "\($0) 次有效行程" } ?? "历史样本"
-            switch prediction.range.source ?? "" {
-            case "personalized", "personalized_blend":
-                return "算法服务端结合官方预估和 \(sampleText) 持续校准。"
-            default:
-                return "服务端默认算法基于 \(sampleText) 计算。"
-            }
+        switch localEstimateBasis {
+        case .personalized(let sampleCount):
+            return "算法服务端结合官方预估和 \(Self.sampleText(sampleCount)) 持续校准。"
+        case .serverDefault(let sampleCount):
+            return "服务端默认算法基于 \(Self.sampleText(sampleCount)) 计算。"
+        case .missing:
+            return "服务端未返回算法预测，当前显示官方预估。"
         }
-        return "服务端未返回算法预测，当前显示官方预估。"
     }
 
     var monthEnergyPerKm: Double? {
@@ -1463,20 +1510,8 @@ struct NinebotVehicleState: Codable, Equatable {
         )
     }
 
-    var warningTexts: [String] {
-        var warnings: [String] = []
-        if let battery, battery < 15 {
-            warnings.append("电量低于 15%，建议尽快充电")
-        } else if let battery, battery < 25 {
-            warnings.append("电量偏低，出门前建议确认续航")
-        }
-        if isPoweredOn == false {
-            warnings.append("上电状态为 0，请确认车辆电源")
-        }
-        if isLocked == false {
-            warnings.append("车辆当前未锁车")
-        }
-        return warnings
+    private static func sampleText(_ count: Int?) -> String {
+        count.map { "\($0) 次有效行程" } ?? "历史样本"
     }
 
     private static let decimalFormatter: NumberFormatter = {
@@ -1544,13 +1579,6 @@ struct NinebotVehicleState: Codable, Equatable {
         officialEstimatedMileage
     }
 
-    private var usesServerAlgorithmEstimate: Bool {
-        guard let estimatedRange = serverPrediction?.range.estimatedRange,
-              estimatedRange >= 0 else {
-            return false
-        }
-        return true
-    }
 
     private var defaultObservedKmPerBatteryPercent: Double? {
         let samples = observedRangeSamples
@@ -1651,7 +1679,10 @@ struct NinebotVehicleState: Codable, Equatable {
     }
 
     private static func durationText(minutes: Double) -> String {
-        if minutes >= 60 {
+        // `decimalFormatter` prints one decimal, so the bucket is chosen from
+        // the value at that precision — 59.97 minutes reads "1 小时", never
+        // "60 分钟".
+        if displayRounded(minutes, maximumFractionDigits: 1) >= 60 {
             let hours = minutes / 60
             return "\(decimalFormatter.string(from: NSNumber(value: hours)) ?? "--") 小时"
         }
@@ -1718,16 +1749,16 @@ struct NinebotVehicleHistorySummary: Equatable {
     }
 
     var periodText: String {
-        let seconds = latest.date.timeIntervalSince(first.date)
-        guard seconds > 0 else { return "刚刚开始记录" }
-        let hours = seconds / 3600
-        if hours >= 24 {
-            return "\(Self.numberText(hours / 24, maximumFractionDigits: 1)) 天"
+        switch period {
+        case .justStarted:
+            return "刚刚开始记录"
+        case .days(let days):
+            return "\(Self.numberText(days, maximumFractionDigits: 1)) 天"
+        case .hours(let hours):
+            return "\(Self.numberText(hours, maximumFractionDigits: NinebotHistoryPeriod.hoursFractionDigits)) 小时"
+        case .minutes(let minutes):
+            return "\(Self.numberText(minutes, maximumFractionDigits: NinebotHistoryPeriod.minutesFractionDigits)) 分钟"
         }
-        if hours >= 1 {
-            return "\(Self.numberText(hours, maximumFractionDigits: 1)) 小时"
-        }
-        return "\(Self.numberText(seconds / 60, maximumFractionDigits: 0)) 分钟"
     }
 
     var batteryDeltaText: String {

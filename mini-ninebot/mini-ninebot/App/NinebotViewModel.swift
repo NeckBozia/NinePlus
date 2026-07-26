@@ -110,6 +110,7 @@ struct NinebotDiagnosticsSnapshot {
     var hasConfiguration: Bool
     var serverText: String
     var accountText: String
+    var isAccountBound: Bool
     var vehicleCount: Int
     var selectedVehicleName: String
     var dashboardUpdatedAt: Date?
@@ -122,6 +123,7 @@ struct NinebotDiagnosticsSnapshot {
     var rideDetailCount: Int
     var resolvedAddressCount: Int
     var dashboardCacheBytes: Int
+    var recordedTrackBytes: Int
 }
 
 @MainActor
@@ -134,7 +136,11 @@ final class NinebotViewModel: ObservableObject {
     @Published var loginResult: NinebotLoginResult?
     @Published var dashboard: NinebotDashboard
     @Published var isLoading = false
-    @Published var loadingMessage: String?
+    @Published private(set) var loadingOperation: NinebotLoadingOperation?
+
+    /// Derived from `loadingOperation`.  Kept as a separate published value
+    /// so views that only need the text do not have to switch on the enum.
+    var loadingMessage: String? { loadingOperation?.message }
     @Published var errorMessage: String?
     @Published var statusMessage: String?
     @Published private(set) var capturePrivacyProtectionEnabled = false
@@ -174,9 +180,19 @@ final class NinebotViewModel: ObservableObject {
         !dashboard.vehicles.isEmpty
     }
 
-    var currentAccountDisplay: String {
+    /// The signed-in phone number, or nil when no account is bound.
+    ///
+    /// Anything that needs to know *whether* an account is bound uses this.
+    /// `currentAccountDisplay` is only for showing to a person — comparing it
+    /// against the placeholder wording is how the diagnostics tile used to
+    /// decide, which broke silently whenever the wording changed.
+    var boundAccountPhone: String? {
         let savedPhone = loginResult?.phone?.trimmed ?? ""
-        return savedPhone.isEmpty ? "未绑定账号" : savedPhone
+        return savedPhone.isEmpty ? nil : savedPhone
+    }
+
+    var currentAccountDisplay: String {
+        boundAccountPhone ?? "未绑定账号"
     }
 
     var hasLoginAccount: Bool {
@@ -226,7 +242,7 @@ final class NinebotViewModel: ObservableObject {
     }
 
     func testConnection() async {
-        await runLoadingOperation(message: "正在测试连接") {
+        await runLoadingOperation(.testConnection) {
             let client = try makeClient()
             try await client.healthCheck()
             self.errorMessage = nil
@@ -235,7 +251,7 @@ final class NinebotViewModel: ObservableObject {
     }
 
     func refreshDashboard() async {
-        await runLoadingOperation(message: "正在刷新车况") {
+        await runLoadingOperation(.refreshDashboard) {
             let client = try makeClient()
             let dashboard = try await client.fetchDashboard(selectedSN: self.dashboard.selectedSN)
             let archivedDashboard = self.saveDashboard(dashboard)
@@ -253,7 +269,7 @@ final class NinebotViewModel: ObservableObject {
         nominalVoltage: Double?,
         capacityWh: Double?
     ) async {
-        await runLoadingOperation(message: "正在更新电池类型") {
+        await runLoadingOperation(.updateBatteryChemistry(chemistry)) {
             let client = try makeClient()
             _ = try await client.updateBatteryChemistry(
                 sn: sn,
@@ -271,7 +287,7 @@ final class NinebotViewModel: ObservableObject {
     }
 
     func syncTravelMonth(vehicleSN: String, month: String) async {
-        await runLoadingOperation(message: "正在获取 \(Self.displayMonth(month)) 行程") {
+        await runLoadingOperation(.syncTravelMonth(month: month)) {
             self.syncingTravelMonth = month
             defer { self.syncingTravelMonth = nil }
 
@@ -285,9 +301,9 @@ final class NinebotViewModel: ObservableObject {
             await self.refreshResolvedAddressesIfNeeded(for: archivedDashboard)
 
             if page.total == 0 {
-                self.statusMessage = "\(Self.displayMonth(month)) 暂无行程"
+                self.statusMessage = "\(NinebotLoadingOperation.displayMonth(month)) 暂无行程"
             } else {
-                self.statusMessage = "已获取 \(Self.displayMonth(month)) \(page.total) 条行程"
+                self.statusMessage = "已获取 \(NinebotLoadingOperation.displayMonth(month)) \(page.total) 条行程"
             }
             self.errorMessage = nil
             WidgetCenter.shared.reloadAllTimelines()
@@ -295,7 +311,7 @@ final class NinebotViewModel: ObservableObject {
     }
 
     func resolveAddressesNow() async {
-        await runLoadingOperation(message: "正在解析车辆位置") {
+        await runLoadingOperation(.resolveAddresses) {
             try await self.resolveAddresses(for: self.dashboard, force: true)
             self.errorMessage = nil
             self.statusMessage = "车辆位置已解析"
@@ -303,7 +319,7 @@ final class NinebotViewModel: ObservableObject {
     }
 
     func enableChargingNotifications() async {
-        await runLoadingOperation(message: "正在开启充电通知") {
+        await runLoadingOperation(.enableChargingNotifications) {
             _ = try await NinebotPushManager.shared.requestAuthorizationRegisterAndWaitForToken()
             self.pushDeviceToken = self.store.loadPushDeviceToken()
             if self.pushDeviceToken != nil {
@@ -318,7 +334,7 @@ final class NinebotViewModel: ObservableObject {
     }
 
     func syncPushDeviceToken() async {
-        await runLoadingOperation(message: "正在上报设备 Token") {
+        await runLoadingOperation(.syncPushDeviceToken) {
             _ = try await NinebotPushManager.shared.requestAuthorizationRegisterAndWaitForToken()
             self.pushDeviceToken = self.store.loadPushDeviceToken()
             try await NinebotPushManager.shared.registerStoredTokenWithServer()
@@ -343,7 +359,7 @@ final class NinebotViewModel: ObservableObject {
     }
 
     func loginWithPassword() async {
-        await runLoadingOperation(message: "正在密码登录") {
+        await runLoadingOperation(.login) {
             guard !account.trimmed.isEmpty else { throw NinebotInputError.missingAccount }
             guard !password.isEmpty else { throw NinebotInputError.missingPassword }
 
@@ -378,7 +394,7 @@ final class NinebotViewModel: ObservableObject {
             activeVehicleActionSN = nil
         }
 
-        await runLoadingOperation(message: action.loadingTitle) {
+        await runLoadingOperation(.vehicleAction(action)) {
             let client = try makeClient()
             switch action {
             case .bell:
@@ -411,6 +427,12 @@ final class NinebotViewModel: ObservableObject {
             guard let sn else { return true }
             return ride.vehicleSN == nil || ride.vehicleSN == sn
         }
+    }
+
+    /// Loads a ride's track points on demand.  List rows only ever hold
+    /// summaries, so anything that draws a track has to ask for the full record.
+    func recordedRideWithTrack(id: String) -> NinebotRecordedRide? {
+        store.loadRecordedRide(id: id)
     }
 
     func recordedRide(associatedWith rideID: String, vehicleSN: String?) -> NinebotRecordedRide? {
@@ -488,6 +510,7 @@ final class NinebotViewModel: ObservableObject {
             hasConfiguration: hasConfiguration,
             serverText: diagnosticsConnectionText,
             accountText: currentAccountDisplay,
+            isAccountBound: boundAccountPhone != nil,
             vehicleCount: vehicles.count,
             selectedVehicleName: dashboard.primaryVehicle?.vehicle.name ?? "暂无车辆",
             dashboardUpdatedAt: dashboard.updatedAt == .distantPast ? nil : dashboard.updatedAt,
@@ -499,7 +522,8 @@ final class NinebotViewModel: ObservableObject {
             recordedRideCount: store.recordedRideCount(),
             rideDetailCount: rideDetails.count,
             resolvedAddressCount: resolvedAddresses.count,
-            dashboardCacheBytes: store.storedDashboardByteCount()
+            dashboardCacheBytes: store.storedDashboardByteCount(),
+            recordedTrackBytes: store.recordedTrackByteCount()
         )
     }
 
@@ -637,16 +661,19 @@ final class NinebotViewModel: ObservableObject {
         store.saveConfiguration(currentConfiguration)
     }
 
-    private func runLoadingOperation(message: String, _ operation: () async throws -> Void) async {
+    private func runLoadingOperation(
+        _ kind: NinebotLoadingOperation,
+        _ operation: () async throws -> Void
+    ) async {
         let startedAt = Date()
-        loadingMessage = message
+        loadingOperation = kind
         isLoading = true
 
         do {
             try await operation()
             store.saveLastAppRefreshEvent(NinebotRefreshEvent(
-                source: "App",
-                operation: message,
+                source: .app,
+                operation: kind.refreshOperation,
                 startedAt: startedAt,
                 endedAt: Date(),
                 success: true,
@@ -658,8 +685,8 @@ final class NinebotViewModel: ObservableObject {
             statusMessage = nil
             store.saveLastError(message)
             store.saveLastAppRefreshEvent(NinebotRefreshEvent(
-                source: "App",
-                operation: self.loadingMessage ?? "操作",
+                source: .app,
+                operation: kind.refreshOperation,
                 startedAt: startedAt,
                 endedAt: Date(),
                 success: false,
@@ -668,14 +695,7 @@ final class NinebotViewModel: ObservableObject {
         }
 
         isLoading = false
-        loadingMessage = nil
-    }
-
-    private static func displayMonth(_ month: String) -> String {
-        guard month.count == 6 else { return month }
-        let year = month.prefix(4)
-        let monthValue = month.suffix(2)
-        return "\(year)年\(monthValue)月"
+        loadingOperation = nil
     }
 
     private static let timeFormatter: DateFormatter = {

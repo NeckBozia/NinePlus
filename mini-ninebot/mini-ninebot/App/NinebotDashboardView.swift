@@ -157,7 +157,7 @@ struct NinebotDashboardView: View {
         .sheet(isPresented: $isShowingVehiclePicker) {
             VehiclePickerSheet(
                 dashboard: model.dashboard,
-                fallbackAccount: model.currentAccountDisplay
+                boundAccountPhone: model.boundAccountPhone
             ) { sn in
                 model.selectVehicle(sn: sn)
             }
@@ -198,8 +198,7 @@ struct NinebotDashboardView: View {
 
     private var isDashboardRefreshLoading: Bool {
         guard model.isLoading else { return false }
-        let message = model.loadingMessage ?? ""
-        return message.contains("刷新车况") || message.contains("解析车辆位置")
+        return model.loadingOperation?.showsDashboardRefreshIndicator == true
     }
 
     private var showsRefreshIndicator: Bool {
@@ -1414,32 +1413,6 @@ private struct TripMonthFilterPanel: View {
     }
 }
 
-private func tripMonthString(for record: NinebotRideRecord) -> String? {
-    guard let date = record.startedAt ?? record.endedAt else { return nil }
-    return tripMonthString(for: date)
-}
-
-private func tripMonthString(for date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.calendar = Calendar(identifier: .gregorian)
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
-    formatter.dateFormat = "yyyyMM"
-    return formatter.string(from: date)
-}
-
-private func previousTripMonth(before month: String) -> String {
-    guard month.count == 6,
-          let year = Int(month.prefix(4)),
-          let monthValue = Int(month.suffix(2)) else {
-        return tripMonthString(for: Date())
-    }
-    var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
-    let date = calendar.date(from: DateComponents(year: year, month: monthValue, day: 1)) ?? Date()
-    let previous = calendar.date(byAdding: .month, value: -1, to: date) ?? date
-    return tripMonthString(for: previous)
-}
 
 private func tripMonthDisplayName(_ month: String) -> String {
     guard month.count == 6 else { return month }
@@ -1450,7 +1423,7 @@ private func tripMonthDisplayName(_ month: String) -> String {
 
 private struct VehiclePickerSheet: View {
     var dashboard: NinebotDashboard
-    var fallbackAccount: String
+    var boundAccountPhone: String?
     var onSelect: (String) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -1504,11 +1477,11 @@ private struct VehiclePickerSheet: View {
         var groups: [VehiclePickerAccountGroup] = []
 
         for snapshot in dashboard.vehicles {
-            let title = vehicleAccountTitle(for: snapshot, fallback: fallbackAccount)
-            if let index = groups.firstIndex(where: { $0.title == title }) {
+            let account = NinebotVehicleAccount(vehicle: snapshot.vehicle, boundPhone: boundAccountPhone)
+            if let index = groups.firstIndex(where: { $0.account == account }) {
                 groups[index].vehicles.append(snapshot)
             } else {
-                groups.append(VehiclePickerAccountGroup(title: title, vehicles: [snapshot]))
+                groups.append(VehiclePickerAccountGroup(account: account, vehicles: [snapshot]))
             }
         }
 
@@ -1517,47 +1490,21 @@ private struct VehiclePickerSheet: View {
 }
 
 private struct VehiclePickerAccountGroup: Identifiable {
-    var title: String
+    var account: NinebotVehicleAccount
     var vehicles: [NinebotVehicleSnapshot]
 
-    var id: String { title }
+    var id: String { account.id }
+    var title: String { account.title }
 }
 
-private func vehicleAccountTitle(for snapshot: NinebotVehicleSnapshot, fallback: String) -> String {
-    let keys = [
-        "account",
-        "account_id",
-        "accountId",
-        "phone",
-        "mobile",
-        "user_phone",
-        "userPhone",
-        "owner_phone",
-        "ownerPhone",
-        "bind_phone",
-        "bindPhone",
-        "user_id",
-        "userId",
-        "business_uid",
-        "businessUID",
-        "uid",
-        "uuid"
-    ]
-
-    if let raw = snapshot.vehicle.raw {
-        for key in keys {
-            if let value = raw[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !value.isEmpty {
-                return "\(value) 账号"
-            }
+private extension NinebotVehicleAccount {
+    var title: String {
+        switch self {
+        case .identified(let value): return "\(value) 账号"
+        case .boundPhone(let phone): return "\(phone) 账号"
+        case .current: return "当前九号账号"
         }
     }
-
-    let fallback = fallback.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !fallback.isEmpty, fallback != "未绑定账号" {
-        return "\(fallback) 账号"
-    }
-    return "当前九号账号"
 }
 
 private struct VehiclePickerRow: View {
@@ -2005,26 +1952,24 @@ private struct ChargingStatusView: View {
     private var metrics: [ChargingMetric] {
         [
             state.chargingPower.map {
-                ChargingMetric(title: "功率", value: formatNumber($0, unit: " W", maximumFractionDigits: 0), systemImage: "bolt.fill")
+                ChargingMetric(id: "power", title: "功率", value: formatNumber($0, unit: " W", maximumFractionDigits: 0), systemImage: "bolt.fill")
             },
             state.batteryVoltage.map {
-                ChargingMetric(title: "电压", value: formatNumber($0, unit: " V", maximumFractionDigits: 1), systemImage: "bolt.batteryblock.fill")
+                ChargingMetric(id: "voltage", title: "电压", value: formatNumber($0, unit: " V", maximumFractionDigits: 1), systemImage: "bolt.batteryblock.fill")
             },
             state.batteryTemperature.map {
-                ChargingMetric(title: "温度", value: formatNumber($0, unit: "°C", maximumFractionDigits: 1), systemImage: "thermometer.medium")
+                ChargingMetric(id: "temperature", title: "温度", value: formatNumber($0, unit: "°C", maximumFractionDigits: 1), systemImage: "thermometer.medium")
             }
         ].compactMap { $0 }
     }
 }
 
 private struct ChargingMetric: Identifiable {
+    /// ASCII, so the identity survives rewording `title`.
+    var id: String
     var title: String
     var value: String
     var systemImage: String
-
-    var id: String {
-        title
-    }
 }
 
 private struct ChargingMetricChip: View {
@@ -2505,7 +2450,7 @@ private struct VehicleHealthPanel: View {
     var snapshot: NinebotVehicleSnapshot
 
     var body: some View {
-        let warnings = snapshot.state.warningTexts
+        let warnings = snapshot.state.warnings
         let health = snapshot.state.health
 
         VStack(alignment: .leading, spacing: 12) {
@@ -2543,8 +2488,8 @@ private struct VehicleHealthPanel: View {
 
             if !warnings.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(warnings, id: \.self) { warning in
-                        Label(warning, systemImage: "exclamationmark.circle.fill")
+                    ForEach(warnings) { warning in
+                        Label(warning.text, systemImage: "exclamationmark.circle.fill")
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.orange)
                             .fixedSize(horizontal: false, vertical: true)
@@ -2726,8 +2671,8 @@ private struct TripTrendView: View {
     var snapshot: NinebotVehicleSnapshot
     var recordedRides: [NinebotRecordedRide]
 
-    private var analysis: TripTrendAnalysis {
-        TripTrendAnalysis(snapshot: snapshot, recordedRides: recordedRides)
+    private var analysis: NinebotTripTrend {
+        NinebotTripTrend(snapshot: snapshot, recordedRides: recordedRides)
     }
 
     var body: some View {
@@ -2799,7 +2744,7 @@ private struct TripTrendRangeModelCard: View {
 
 private struct TripTrendHeroCard: View {
     var snapshot: NinebotVehicleSnapshot
-    var analysis: TripTrendAnalysis
+    var analysis: NinebotTripTrend
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -2950,7 +2895,7 @@ private struct TripTrendDailyCard: View {
 }
 
 private struct TripTrendRideCard: View {
-    var analysis: TripTrendAnalysis
+    var analysis: NinebotTripTrend
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -2992,7 +2937,7 @@ private struct TripTrendRideCard: View {
 }
 
 private struct TripTrendInsightCard: View {
-    var analysis: TripTrendAnalysis
+    var analysis: NinebotTripTrend
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -3001,8 +2946,8 @@ private struct TripTrendInsightCard: View {
                 .foregroundStyle(Color.teslaPrimaryText)
 
             VStack(alignment: .leading, spacing: 9) {
-                ForEach(analysis.insights, id: \.self) { insight in
-                    Label(insight, systemImage: "sparkle.magnifyingglass")
+                ForEach(analysis.insights) { insight in
+                    Label(insight.text, systemImage: "sparkle.magnifyingglass")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(Color.teslaSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -3156,82 +3101,12 @@ private struct EmptyTrendState: View {
     }
 }
 
-private struct TripTrendAnalysis {
-    var snapshot: NinebotVehicleSnapshot
-    var recordedRides: [NinebotRecordedRide]
-
-    var dailyRecords: [NinebotDailyMileageRecord] {
-        snapshot.state.dailyMileages.sorted {
-            if let left = $0.date, let right = $1.date {
-                return left < right
-            }
-            return $0.day < $1.day
-        }
-    }
-
-    var rides: [NinebotRideRecord] {
-        snapshot.state.rides
-    }
-
-    var recentRides: [NinebotRideRecord] {
-        Array(rides.prefix(8))
-    }
-
-    var rideCount: Int {
-        rides.count
-    }
-
-    var activeDayCount: Int {
-        dailyRecords.count
-    }
-
-    var monthMileage: Double? {
-        if let monthMileage = snapshot.state.monthMileage {
-            return monthMileage
-        }
-        guard !dailyRecords.isEmpty else { return nil }
-        return dailyRecords.reduce(0) { $0 + $1.mileage }
-    }
-
-    var averageDailyMileage: Double? {
-        guard let monthMileage, !dailyRecords.isEmpty else { return nil }
-        return monthMileage / Double(dailyRecords.count)
-    }
-
-    var averageSpeed: Double? {
-        let samples = rides.compactMap(\.speed).filter { $0 > 0 }
-        guard !samples.isEmpty else { return nil }
-        return samples.reduce(0, +) / Double(samples.count)
-    }
-
-    var averageUsedElectricity: Double? {
-        let samples = rides.compactMap(\.usedElectricity).filter { $0 > 0 }
-        guard !samples.isEmpty else { return nil }
-        return samples.reduce(0, +) / Double(samples.count)
-    }
-
-    var peakRideMileage: Double? {
-        rides.compactMap(\.mileage).max()
-    }
-
-    var energyPerKm: Double? {
-        if let monthMileage, monthMileage > 0,
-           let energy = snapshot.state.monthUsedElectricity ?? snapshot.state.monthEnergy {
-            return energy / monthMileage
-        }
-
-        let samples = rides.compactMap { ride -> Double? in
-            guard let mileage = ride.mileage, mileage > 0,
-                  let energy = ride.energy, energy > 0 else { return nil }
-            return energy / mileage
-        }
-        guard !samples.isEmpty else { return nil }
-        return samples.reduce(0, +) / Double(samples.count)
-    }
-
+// Numbers and rules live in Shared/NinebotTripTrend.swift.  What stays here is
+// how they read on screen.
+private extension NinebotTripTrend {
     var energyPerKmText: String {
         guard let energyPerKm else { return "-- Wh/km" }
-        return "\(formatNumber(energyPerKm, unit: " Wh/km", maximumFractionDigits: 1))"
+        return formatNumber(energyPerKm, unit: " Wh/km", maximumFractionDigits: 1)
     }
 
     var energyPerKmShortText: String {
@@ -3239,34 +3114,39 @@ private struct TripTrendAnalysis {
         return formatNumber(energyPerKm, unit: "", maximumFractionDigits: 1)
     }
 
-    var insights: [String] {
-        var result: [String] = []
+}
 
-        if let peak = peakRideMileage, let averageDailyMileage, peak > averageDailyMileage * 1.8 {
-            result.append("有长距离单次骑行，续航预估会更依赖最近行程样本。")
+private extension NinebotVehicleWarning {
+    var text: String {
+        switch self {
+        case .batteryVeryLow:
+            return "电量低于 15%，建议尽快充电"
+        case .batteryLow:
+            return "电量偏低，出门前建议确认续航"
+        case .poweredOff:
+            return "上电状态为 0，请确认车辆电源"
+        case .unlocked:
+            return "车辆当前未锁车"
         }
+    }
+}
 
-        if let averageUsedElectricity, averageUsedElectricity > 12 {
-            result.append("最近单次平均用电偏高，可以关注胎压、载重和急加速。")
+private extension NinebotTripInsight {
+    var text: String {
+        switch self {
+        case .longRideDominates:
+            return "有长距离单次骑行，续航预估会更依赖最近行程样本。"
+        case .highAverageElectricity:
+            return "最近单次平均用电偏高，可以关注胎压、载重和急加速。"
+        case .highEnergyPerKm:
+            return "单公里耗电偏高，后续可以结合温度和速度继续校准。"
+        case .fewRangeSamples:
+            return "有效续航样本还不多，多记录几次后准确率会更稳定。"
+        case .unlinkedLocalRides:
+            return "有本地记录尚未关联接口行程，关联后趋势会更完整。"
+        case .normal:
+            return "当前趋势正常，继续积累行程后可以看到更稳定的变化。"
         }
-
-        if let energyPerKm, energyPerKm > 35 {
-            result.append("单公里耗电偏高，后续可以结合温度和速度继续校准。")
-        }
-
-        if snapshot.state.observedRangeSampleCount < 5 {
-            result.append("有效续航样本还不多，多记录几次后准确率会更稳定。")
-        }
-
-        if recordedRides.contains(where: { $0.associatedRideID == nil }) {
-            result.append("有本地记录尚未关联接口行程，关联后趋势会更完整。")
-        }
-
-        if result.isEmpty {
-            result.append("当前趋势正常，继续积累行程后可以看到更稳定的变化。")
-        }
-
-        return result
     }
 }
 
@@ -4168,21 +4048,19 @@ private struct RideRecordRow: View {
 
     private var metrics: [RideDisplayMetric] {
         [
-            record.energy.map { RideDisplayMetric(title: "能耗", value: formatEnergyWh($0), systemImage: "bolt.horizontal.fill") },
-            record.usedElectricity.map { RideDisplayMetric(title: "用电", value: formatPercent($0), systemImage: "powerplug.fill") },
-            record.speed.map { RideDisplayMetric(title: "速度", value: formatSpeed($0), systemImage: "speedometer") }
+            record.energy.map { RideDisplayMetric(id: "energy", title: "能耗", value: formatEnergyWh($0), systemImage: "bolt.horizontal.fill") },
+            record.usedElectricity.map { RideDisplayMetric(id: "used_electricity", title: "用电", value: formatPercent($0), systemImage: "powerplug.fill") },
+            record.speed.map { RideDisplayMetric(id: "speed", title: "速度", value: formatSpeed($0), systemImage: "speedometer") }
         ].compactMap { $0 }
     }
 }
 
 private struct RideDisplayMetric: Identifiable {
+    /// ASCII, so the identity survives rewording `title`.
+    var id: String
     var title: String
     var value: String
     var systemImage: String
-
-    var id: String {
-        "\(title)-\(value)-\(systemImage)"
-    }
 }
 
 private struct NinebotRideDetailView: View {
@@ -4190,14 +4068,21 @@ private struct NinebotRideDetailView: View {
     var vehicleSN: String?
     var record: NinebotRideRecord
     var localRecord: NinebotRecordedRide?
+    @State private var loadedLocalRecord: NinebotRecordedRide?
+
+    // The associated record arrives as a summary; its track is read on open.
+    private var detailLocalRecord: NinebotRecordedRide? {
+        loadedLocalRecord ?? localRecord
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                RideDetailHero(record: effectiveRecord, localRecord: localRecord)
+                RideDetailHero(record: effectiveRecord, localRecord: detailLocalRecord)
 
-                if let localRecord {
+                if let localRecord = detailLocalRecord {
                     RideTrackMapPanel(record: localRecord)
+                        .id(localRecord.points.count)
                 } else if !interfaceTrackPoints.isEmpty {
                     InterfaceRideTrackMapPanel(points: interfaceTrackPoints)
                 }
@@ -4222,8 +4107,14 @@ private struct NinebotRideDetailView: View {
         .navigationTitle("行程详情")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: "\(vehicleSN ?? "")|\(record.id)") {
+            loadLocalTrackIfNeeded()
             await loadRemoteDetailIfNeeded()
         }
+    }
+
+    private func loadLocalTrackIfNeeded() {
+        guard let localRecord, !localRecord.isTrackLoaded else { return }
+        loadedLocalRecord = NinebotSharedStore().loadRecordedRide(id: localRecord.id)
     }
 
     private var canLoadRemoteDetail: Bool {
@@ -4318,17 +4209,17 @@ private struct RideDetailHero: View {
 
     private var metrics: [RideDisplayMetric] {
         var result: [RideDisplayMetric] = [
-            record.speed.map { RideDisplayMetric(title: "接口速度", value: formatSpeed($0), systemImage: "speedometer") },
-            record.energy.map { RideDisplayMetric(title: "能耗", value: formatEnergyWh($0), systemImage: "bolt.horizontal.fill") },
-            record.usedElectricity.map { RideDisplayMetric(title: "用电", value: formatPercent($0), systemImage: "powerplug.fill") },
-            record.durationMinutes.map { RideDisplayMetric(title: "时长", value: formatDuration($0), systemImage: "timer") }
+            record.speed.map { RideDisplayMetric(id: "interface_speed", title: "接口速度", value: formatSpeed($0), systemImage: "speedometer") },
+            record.energy.map { RideDisplayMetric(id: "energy", title: "能耗", value: formatEnergyWh($0), systemImage: "bolt.horizontal.fill") },
+            record.usedElectricity.map { RideDisplayMetric(id: "used_electricity", title: "用电", value: formatPercent($0), systemImage: "powerplug.fill") },
+            record.durationMinutes.map { RideDisplayMetric(id: "duration", title: "时长", value: formatDuration($0), systemImage: "timer") }
         ].compactMap { $0 }
 
         if let localRecord {
             result.append(contentsOf: [
-                RideDisplayMetric(title: "本地极速", value: formatSpeed(localRecord.maxSpeedKmh), systemImage: "gauge.with.dots.needle.67percent"),
-                RideDisplayMetric(title: "最大 G", value: formatAccelerationG(localRecord.maxAccelerationG), systemImage: "bolt.circle.fill"),
-                RideDisplayMetric(title: "轨迹点", value: "\(localRecord.points.count) 个", systemImage: "point.3.connected.trianglepath.dotted")
+                RideDisplayMetric(id: "local_top_speed", title: "本地极速", value: formatSpeed(localRecord.maxSpeedKmh), systemImage: "gauge.with.dots.needle.67percent"),
+                RideDisplayMetric(id: "max_g", title: "最大 G", value: formatAccelerationG(localRecord.maxAccelerationG), systemImage: "bolt.circle.fill"),
+                RideDisplayMetric(id: "track_points", title: "轨迹点", value: "\(localRecord.trackPointCount) 个", systemImage: "point.3.connected.trianglepath.dotted")
             ])
         }
 
@@ -5006,120 +4897,6 @@ private struct VehicleRow: View {
     }
 }
 
-private func formatDate(_ date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "zh_CN")
-    formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
-    formatter.dateFormat = "yyyy-MM-dd HH:mm"
-    return formatter.string(from: date)
-}
-
-private func formatTime(_ date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "zh_CN")
-    formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
-    formatter.dateFormat = "HH:mm"
-    return formatter.string(from: date)
-}
-
-private func vehicleCoordinate(_ state: NinebotVehicleState) -> CLLocationCoordinate2D? {
-    guard let latitude = state.latitude,
-          let longitude = state.longitude,
-          (-90...90).contains(latitude),
-          (-180...180).contains(longitude) else {
-        return nil
-    }
-
-    return mapKitCoordinate(latitude: latitude, longitude: longitude)
-}
-
-private func mapKitCoordinate(latitude: Double, longitude: Double) -> CLLocationCoordinate2D {
-    NinebotCoordinateTransform.mapKitCoordinate(latitude: latitude, longitude: longitude)
-}
-
-private func formatDistance(_ value: Double?) -> String {
-    formatNumber(value, unit: " km", maximumFractionDigits: 1)
-}
-
-private func formatDistanceNumber(_ value: Double?) -> String {
-    formatNumber(value, unit: "", maximumFractionDigits: 1)
-}
-
-private func formatEnergyWh(_ value: Double?) -> String {
-    formatNumber(value, unit: " Wh", maximumFractionDigits: 0)
-}
-
-private func formatPercent(_ value: Double?) -> String {
-    formatNumber(value, unit: "%", maximumFractionDigits: 1)
-}
-
-private func formatSpeed(_ value: Double?) -> String {
-    formatNumber(value, unit: " km/h", maximumFractionDigits: 1)
-}
-
-private func formatAccelerationG(_ value: Double?) -> String {
-    formatNumber(value, unit: " G", maximumFractionDigits: 2, minimumFractionDigits: 2)
-}
-
-private func shortTrendValue(_ value: Double) -> String {
-    if value >= 100 {
-        return formatNumber(value, unit: "", maximumFractionDigits: 0)
-    }
-    if value >= 10 {
-        return formatNumber(value, unit: "", maximumFractionDigits: 1)
-    }
-    return formatNumber(value, unit: "", maximumFractionDigits: 1)
-}
-
-private func formatDuration(_ minutes: Double?) -> String {
-    guard let minutes else { return "--" }
-    if minutes >= 60 {
-        return formatNumber(minutes / 60, unit: " 小时", maximumFractionDigits: 1)
-    }
-    return formatNumber(minutes, unit: " 分钟", maximumFractionDigits: 0)
-}
-
-private func formatRideDate(_ date: Date) -> String {
-    formatDate(date)
-}
-
-private func formattedJSON(_ value: JSONValue) -> String {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-    guard let data = try? encoder.encode(value),
-          let text = String(data: data, encoding: .utf8) else {
-        return value.displayText
-    }
-    return text
-}
-
-private func formatNumber(
-    _ value: Double?,
-    unit: String,
-    maximumFractionDigits: Int = 6,
-    minimumFractionDigits: Int = 0
-) -> String {
-    guard let value else { return "--\(unit)" }
-    let formatter = NumberFormatter()
-    formatter.maximumFractionDigits = maximumFractionDigits
-    formatter.minimumFractionDigits = minimumFractionDigits
-    let text = formatter.string(from: NSNumber(value: value)) ?? "\(value)"
-    return "\(text)\(unit)"
-}
-
-private func boolText(_ value: Bool?, trueText: String, falseText: String) -> String {
-    guard let value else { return "未知" }
-    return value ? trueText : falseText
-}
-
-private func coordinateText(_ latitude: Double?, _ longitude: Double?) -> String {
-    guard let latitude, let longitude else { return "--" }
-    return "\(formatCoordinate(latitude)), \(formatCoordinate(longitude))"
-}
-
-private func formatCoordinate(_ value: Double?) -> String {
-    formatNumber(value, unit: "", maximumFractionDigits: 8)
-}
 
 private func healthColor(_ level: NinebotVehicleHealthLevel) -> Color {
     switch level {

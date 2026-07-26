@@ -11,6 +11,9 @@ xcuserdata/
 # Build output
 DerivedData/
 build/
+.build/
+.swiftpm/
+Package.resolved
 *.xcarchive
 *.ipa
 node_modules/

@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+
+# A newer push to the same branch supersedes an in-flight run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # macos-26 ships Xcode 26.0.1 through 26.6, but the *default* is 26.5.
+  # The project was created with 26.6 (CreatedOnToolsVersion) and targets
+  # iOS 26.5, so we select 26.6 explicitly where it is available.
+  # See: https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md
+  DESIRED_XCODE: /Applications/Xcode_26.6.app
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # The gate. Everything in mini-ninebot/Shared is platform-independent and is
+  # compiled by the NineBotCore SPM target, so it can be built and tested from
+  # the command line without a simulator, a signing identity, or an Xcode
+  # scheme. Compilation and execution are separate steps so a build break shows
+  # up as raw compiler diagnostics instead of being buried in test output.
+  # ---------------------------------------------------------------------------
+  unit-tests:
+    name: Unit tests (swift test)
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          echo "Xcode versions present on this image:"
+          ls -1 /Applications | grep -i '^Xcode' || true
+          if [ -d "$DESIRED_XCODE" ]; then
+            sudo xcode-select -s "$DESIRED_XCODE"
+          else
+            echo "::warning::$DESIRED_XCODE is not on this runner image; using the default toolchain."
+          fi
+          xcodebuild -version
+          swift --version
+
+      # The project has zero third-party dependencies, so there is nothing to
+      # resolve or download. This cache only carries incremental build
+      # artifacts, which is still worth a minute or two per run.
+      - name: Cache SwiftPM build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/.swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.swift', 'mini-ninebot/Shared/**/*.swift', 'Tests/**/*.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      # Split out from `swift test` so a compile failure fails here, with the
+      # compiler's own error output as the last thing in the log.
+      - name: Build package and tests
+        run: swift build --build-tests
+
+      # The build above is already done, so this step is effectively just the
+      # test run; any compile break has already failed the job by this point.
+      - name: Run tests
+        run: swift test
+
+  # ---------------------------------------------------------------------------
+  # The second gate, and the only one that compiles the interface layer.
+  #
+  # `unit-tests` above builds the NineBotCore SPM target, which covers
+  # mini-ninebot/Shared only. Everything under mini-ninebot/mini-ninebot and
+  # mini-ninebot/NinebotWidgets -- the views, the view model, the widgets -- is
+  # compiled here and nowhere else. A signature change that misses a call site
+  # in a view is invisible to `swift test`, which is exactly how one shipped.
+  #
+  # This was advisory at first because the project's configuration looked hard
+  # to build headlessly. Each of those worries has an answer, and the job has
+  # been passing consistently, so it now gates:
+  #
+  #   * mini-ninebot.xcodeproj contains no shared schemes (no xcshareddata/
+  #     xcschemes directory), so `xcodebuild -scheme` cannot be used at all.
+  #     This job builds `-target` directly, which needs no scheme.
+  #   * The targets use CODE_SIGN_STYLE = Automatic with no DEVELOPMENT_TEAM and
+  #     placeholder bundle IDs (com.example.NineBotPlus). The CODE_SIGNING_*
+  #     overrides below disable signing entirely.
+  #   * The App Group entitlement cannot be provisioned on a hosted runner,
+  #     which is why CODE_SIGN_ENTITLEMENTS is cleared. Entitlements affect
+  #     signing, not compilation, so nothing about the type check is weakened.
+  #
+  # Building the app target also builds NinebotWidgets, which is embedded as a
+  # dependency, so both targets are covered by this one invocation.
+  # ---------------------------------------------------------------------------
+  xcode-build:
+    name: Xcode build
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          if [ -d "$DESIRED_XCODE" ]; then
+            sudo xcode-select -s "$DESIRED_XCODE"
+          else
+            echo "::warning::$DESIRED_XCODE is not on this runner image; using the default toolchain."
+          fi
+          xcodebuild -version
+          echo "Installed iOS simulator SDKs:"
+          xcodebuild -showsdks | grep -i 'iOS' || true
+
+      - name: List project targets
+        working-directory: mini-ninebot
+        run: xcodebuild -list -project mini-ninebot.xcodeproj
+
+      # Simulator SDK + CODE_SIGNING_ALLOWED=NO keeps this free of any signing
+      # identity, provisioning profile, or developer team.
+      #
+      # ARCHS=arm64 pins the build to the runner's own architecture. The runner
+      # is Apple silicon, and ONLY_ACTIVE_ARCH=YES could not resolve an active
+      # architecture without a scheme, so it fell back to building every
+      # applicable one -- compiling the whole project twice, arm64 and x86_64,
+      # for no added signal. Now that this job gates, that doubled wall-clock is
+      # worth removing.
+      - name: Build app target
+        working-directory: mini-ninebot
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project mini-ninebot.xcodeproj \
+            -target mini-ninebot \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO
