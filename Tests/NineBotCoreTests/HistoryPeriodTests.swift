@@ -45,7 +45,11 @@ final class HistoryPeriodTests: XCTestCase {
     func testDayBoundaryFollowsThePrintedHourFigure() {
         XCTAssertEqual(period(86_400), .days(1))
         // 23:57:10 prints as 24.0 hours, so it reads in days instead.
-        XCTAssertEqual(period(86_230), .days(86_230 / 86_400))
+        //
+        // The expectation divides in the same order the initialiser does —
+        // hours first, then by 24. Collapsing it to `86_230 / 86_400` lands one
+        // ULP away and the enum compares its payload exactly.
+        XCTAssertEqual(period(86_230), .days((86_230.0 / 3_600) / 24))
         // 23:55 still prints as 23.9.
         XCTAssertEqual(period(86_100), .hours(86_100 / 3_600))
     }
