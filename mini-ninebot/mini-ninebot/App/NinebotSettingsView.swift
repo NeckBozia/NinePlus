@@ -1081,7 +1081,7 @@ private struct DiagnosticsHeroCard: View {
             }
 
             HStack(spacing: 10) {
-                DiagnosticMetricPill(title: "账号", value: diagnostics.accountText == "未绑定账号" ? "0" : "1", systemImage: "person.fill")
+                DiagnosticMetricPill(title: "账号", value: diagnostics.isAccountBound ? "1" : "0", systemImage: "person.fill")
                 DiagnosticMetricPill(title: "地址", value: "\(diagnostics.resolvedAddressCount)", systemImage: "map.fill")
                 DiagnosticMetricPill(title: "详情", value: "\(diagnostics.rideDetailCount)", systemImage: "doc.text.magnifyingglass")
             }

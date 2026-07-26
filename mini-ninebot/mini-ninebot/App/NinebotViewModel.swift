@@ -110,6 +110,7 @@ struct NinebotDiagnosticsSnapshot {
     var hasConfiguration: Bool
     var serverText: String
     var accountText: String
+    var isAccountBound: Bool
     var vehicleCount: Int
     var selectedVehicleName: String
     var dashboardUpdatedAt: Date?
@@ -179,9 +180,19 @@ final class NinebotViewModel: ObservableObject {
         !dashboard.vehicles.isEmpty
     }
 
-    var currentAccountDisplay: String {
+    /// The signed-in phone number, or nil when no account is bound.
+    ///
+    /// Anything that needs to know *whether* an account is bound uses this.
+    /// `currentAccountDisplay` is only for showing to a person — comparing it
+    /// against the placeholder wording is how the diagnostics tile used to
+    /// decide, which broke silently whenever the wording changed.
+    var boundAccountPhone: String? {
         let savedPhone = loginResult?.phone?.trimmed ?? ""
-        return savedPhone.isEmpty ? "未绑定账号" : savedPhone
+        return savedPhone.isEmpty ? nil : savedPhone
+    }
+
+    var currentAccountDisplay: String {
+        boundAccountPhone ?? "未绑定账号"
     }
 
     var hasLoginAccount: Bool {
@@ -499,6 +510,7 @@ final class NinebotViewModel: ObservableObject {
             hasConfiguration: hasConfiguration,
             serverText: diagnosticsConnectionText,
             accountText: currentAccountDisplay,
+            isAccountBound: boundAccountPhone != nil,
             vehicleCount: vehicles.count,
             selectedVehicleName: dashboard.primaryVehicle?.vehicle.name ?? "暂无车辆",
             dashboardUpdatedAt: dashboard.updatedAt == .distantPast ? nil : dashboard.updatedAt,

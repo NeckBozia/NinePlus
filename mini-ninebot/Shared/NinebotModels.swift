@@ -1510,22 +1510,6 @@ struct NinebotVehicleState: Codable, Equatable {
         )
     }
 
-    var warningTexts: [String] {
-        var warnings: [String] = []
-        if let battery, battery < 15 {
-            warnings.append("电量低于 15%，建议尽快充电")
-        } else if let battery, battery < 25 {
-            warnings.append("电量偏低，出门前建议确认续航")
-        }
-        if isPoweredOn == false {
-            warnings.append("上电状态为 0，请确认车辆电源")
-        }
-        if isLocked == false {
-            warnings.append("车辆当前未锁车")
-        }
-        return warnings
-    }
-
     private static func sampleText(_ count: Int?) -> String {
         count.map { "\($0) 次有效行程" } ?? "历史样本"
     }

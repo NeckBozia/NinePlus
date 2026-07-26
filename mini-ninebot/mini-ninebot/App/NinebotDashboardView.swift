@@ -157,7 +157,7 @@ struct NinebotDashboardView: View {
         .sheet(isPresented: $isShowingVehiclePicker) {
             VehiclePickerSheet(
                 dashboard: model.dashboard,
-                fallbackAccount: model.currentAccountDisplay
+                boundAccountPhone: model.boundAccountPhone
             ) { sn in
                 model.selectVehicle(sn: sn)
             }
@@ -1423,7 +1423,7 @@ private func tripMonthDisplayName(_ month: String) -> String {
 
 private struct VehiclePickerSheet: View {
     var dashboard: NinebotDashboard
-    var fallbackAccount: String
+    var boundAccountPhone: String?
     var onSelect: (String) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -1477,11 +1477,11 @@ private struct VehiclePickerSheet: View {
         var groups: [VehiclePickerAccountGroup] = []
 
         for snapshot in dashboard.vehicles {
-            let title = vehicleAccountTitle(for: snapshot, fallback: fallbackAccount)
-            if let index = groups.firstIndex(where: { $0.title == title }) {
+            let account = NinebotVehicleAccount(vehicle: snapshot.vehicle, boundPhone: boundAccountPhone)
+            if let index = groups.firstIndex(where: { $0.account == account }) {
                 groups[index].vehicles.append(snapshot)
             } else {
-                groups.append(VehiclePickerAccountGroup(title: title, vehicles: [snapshot]))
+                groups.append(VehiclePickerAccountGroup(account: account, vehicles: [snapshot]))
             }
         }
 
@@ -1490,47 +1490,21 @@ private struct VehiclePickerSheet: View {
 }
 
 private struct VehiclePickerAccountGroup: Identifiable {
-    var title: String
+    var account: NinebotVehicleAccount
     var vehicles: [NinebotVehicleSnapshot]
 
-    var id: String { title }
+    var id: String { account.id }
+    var title: String { account.title }
 }
 
-private func vehicleAccountTitle(for snapshot: NinebotVehicleSnapshot, fallback: String) -> String {
-    let keys = [
-        "account",
-        "account_id",
-        "accountId",
-        "phone",
-        "mobile",
-        "user_phone",
-        "userPhone",
-        "owner_phone",
-        "ownerPhone",
-        "bind_phone",
-        "bindPhone",
-        "user_id",
-        "userId",
-        "business_uid",
-        "businessUID",
-        "uid",
-        "uuid"
-    ]
-
-    if let raw = snapshot.vehicle.raw {
-        for key in keys {
-            if let value = raw[key]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !value.isEmpty {
-                return "\(value) 账号"
-            }
+private extension NinebotVehicleAccount {
+    var title: String {
+        switch self {
+        case .identified(let value): return "\(value) 账号"
+        case .boundPhone(let phone): return "\(phone) 账号"
+        case .current: return "当前九号账号"
         }
     }
-
-    let fallback = fallback.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !fallback.isEmpty, fallback != "未绑定账号" {
-        return "\(fallback) 账号"
-    }
-    return "当前九号账号"
 }
 
 private struct VehiclePickerRow: View {
@@ -1978,26 +1952,24 @@ private struct ChargingStatusView: View {
     private var metrics: [ChargingMetric] {
         [
             state.chargingPower.map {
-                ChargingMetric(title: "功率", value: formatNumber($0, unit: " W", maximumFractionDigits: 0), systemImage: "bolt.fill")
+                ChargingMetric(id: "power", title: "功率", value: formatNumber($0, unit: " W", maximumFractionDigits: 0), systemImage: "bolt.fill")
             },
             state.batteryVoltage.map {
-                ChargingMetric(title: "电压", value: formatNumber($0, unit: " V", maximumFractionDigits: 1), systemImage: "bolt.batteryblock.fill")
+                ChargingMetric(id: "voltage", title: "电压", value: formatNumber($0, unit: " V", maximumFractionDigits: 1), systemImage: "bolt.batteryblock.fill")
             },
             state.batteryTemperature.map {
-                ChargingMetric(title: "温度", value: formatNumber($0, unit: "°C", maximumFractionDigits: 1), systemImage: "thermometer.medium")
+                ChargingMetric(id: "temperature", title: "温度", value: formatNumber($0, unit: "°C", maximumFractionDigits: 1), systemImage: "thermometer.medium")
             }
         ].compactMap { $0 }
     }
 }
 
 private struct ChargingMetric: Identifiable {
+    /// ASCII, so the identity survives rewording `title`.
+    var id: String
     var title: String
     var value: String
     var systemImage: String
-
-    var id: String {
-        title
-    }
 }
 
 private struct ChargingMetricChip: View {
@@ -2478,7 +2450,7 @@ private struct VehicleHealthPanel: View {
     var snapshot: NinebotVehicleSnapshot
 
     var body: some View {
-        let warnings = snapshot.state.warningTexts
+        let warnings = snapshot.state.warnings
         let health = snapshot.state.health
 
         VStack(alignment: .leading, spacing: 12) {
@@ -2516,8 +2488,8 @@ private struct VehicleHealthPanel: View {
 
             if !warnings.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(warnings, id: \.self) { warning in
-                        Label(warning, systemImage: "exclamationmark.circle.fill")
+                    ForEach(warnings) { warning in
+                        Label(warning.text, systemImage: "exclamationmark.circle.fill")
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.orange)
                             .fixedSize(horizontal: false, vertical: true)
@@ -2974,8 +2946,8 @@ private struct TripTrendInsightCard: View {
                 .foregroundStyle(Color.teslaPrimaryText)
 
             VStack(alignment: .leading, spacing: 9) {
-                ForEach(analysis.insightTexts, id: \.self) { insight in
-                    Label(insight, systemImage: "sparkle.magnifyingglass")
+                ForEach(analysis.insights) { insight in
+                    Label(insight.text, systemImage: "sparkle.magnifyingglass")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(Color.teslaSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -3142,8 +3114,20 @@ private extension NinebotTripTrend {
         return formatNumber(energyPerKm, unit: "", maximumFractionDigits: 1)
     }
 
-    var insightTexts: [String] {
-        insights.map(\.text)
+}
+
+private extension NinebotVehicleWarning {
+    var text: String {
+        switch self {
+        case .batteryVeryLow:
+            return "电量低于 15%，建议尽快充电"
+        case .batteryLow:
+            return "电量偏低，出门前建议确认续航"
+        case .poweredOff:
+            return "上电状态为 0，请确认车辆电源"
+        case .unlocked:
+            return "车辆当前未锁车"
+        }
     }
 }
 
@@ -4064,21 +4048,19 @@ private struct RideRecordRow: View {
 
     private var metrics: [RideDisplayMetric] {
         [
-            record.energy.map { RideDisplayMetric(title: "能耗", value: formatEnergyWh($0), systemImage: "bolt.horizontal.fill") },
-            record.usedElectricity.map { RideDisplayMetric(title: "用电", value: formatPercent($0), systemImage: "powerplug.fill") },
-            record.speed.map { RideDisplayMetric(title: "速度", value: formatSpeed($0), systemImage: "speedometer") }
+            record.energy.map { RideDisplayMetric(id: "energy", title: "能耗", value: formatEnergyWh($0), systemImage: "bolt.horizontal.fill") },
+            record.usedElectricity.map { RideDisplayMetric(id: "used_electricity", title: "用电", value: formatPercent($0), systemImage: "powerplug.fill") },
+            record.speed.map { RideDisplayMetric(id: "speed", title: "速度", value: formatSpeed($0), systemImage: "speedometer") }
         ].compactMap { $0 }
     }
 }
 
 private struct RideDisplayMetric: Identifiable {
+    /// ASCII, so the identity survives rewording `title`.
+    var id: String
     var title: String
     var value: String
     var systemImage: String
-
-    var id: String {
-        "\(title)-\(value)-\(systemImage)"
-    }
 }
 
 private struct NinebotRideDetailView: View {
