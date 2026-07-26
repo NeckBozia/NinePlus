@@ -1,5 +1,8 @@
 # 项目约定
 
+> **新会话先读 [`docs/当前状态.md`](./docs/当前状态.md)** —— 做到哪了、下一步是什么、有哪些坑，都在那里。这份文件只讲规矩。
+
+
 ## 语言
 
 **Commit message 和 PR（标题与正文）一律用中文。**
@@ -34,12 +37,12 @@
 
 **做法**：领域层出枚举（rawValue 用 ASCII），界面层用一个 `private extension` 把枚举映射成文案。`NinebotTripInsight`、`NinebotVehicleWarning`、`NinebotChargingStatus` 都是这个形状，照着写。
 
-完整清单见 [`docs/string-extraction-inventory.md`](./docs/string-extraction-inventory.md)，还有 146 处没改完。
+完整清单见 [`docs/移植可行性研究/string-extraction-inventory.md`](./docs/移植可行性研究/string-extraction-inventory.md)，还有 146 处没改完。
 
 ## 改动前先看这两处
 
-- **待拍板的事** —— [`docs/pending-decisions.md`](./docs/pending-decisions.md)。D1–D13 是跨阶段的通用决策，后面按区域前缀分（T 行程 / P 传感器 / R 轨迹 / W Widget / C 充电岛 / S 系统 / I 图标 / A 服务端 / L 文案 / V 实测）。**不要替用户做产品决策**，遇到分歧写进这份文档。
-- **实现规格** —— `docs/phase0-foundation-spec.md` 到 `docs/phase5-system-spec.md` 共八份。
+- **待拍板的事** —— [`docs/移植可行性研究/pending-decisions.md`](./docs/移植可行性研究/pending-decisions.md)。D1–D13 是跨阶段的通用决策，后面按区域前缀分（T 行程 / P 传感器 / R 轨迹 / W Widget / C 充电岛 / S 系统 / I 图标 / A 服务端 / L 文案 / V 实测）。**不要替用户做产品决策**，遇到分歧写进这份文档。
+- **实现规格** —— `docs/移植可行性研究/phase0-foundation-spec.md` 到 `docs/移植可行性研究/phase5-system-spec.md` 共八份。
 
 ## 两条 CI 门禁都会拦
 
@@ -60,4 +63,4 @@
 
 ## 服务端
 
-服务端不在这个仓库里。见 [`docs/android-porting-plan.md`](./docs/android-porting-plan.md)。要改的补丁放在 [`server-patches/`](./server-patches/)。
+服务端不在这个仓库里。见 [`docs/移植可行性研究/android-porting-plan.md`](./docs/移植可行性研究/android-porting-plan.md)。要改的补丁放在 [`server-patches/`](./server-patches/)。
