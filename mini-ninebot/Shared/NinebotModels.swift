@@ -1762,16 +1762,16 @@ struct NinebotVehicleHistorySummary: Equatable {
     }
 
     var periodText: String {
-        let seconds = latest.date.timeIntervalSince(first.date)
-        guard seconds > 0 else { return "刚刚开始记录" }
-        let hours = seconds / 3600
-        if hours >= 24 {
-            return "\(Self.numberText(hours / 24, maximumFractionDigits: 1)) 天"
-        }
-        if hours >= 1 {
+        switch period {
+        case .justStarted:
+            return "刚刚开始记录"
+        case .days(let days):
+            return "\(Self.numberText(days, maximumFractionDigits: 1)) 天"
+        case .hours(let hours):
             return "\(Self.numberText(hours, maximumFractionDigits: 1)) 小时"
+        case .minutes(let minutes):
+            return "\(Self.numberText(minutes, maximumFractionDigits: 0)) 分钟"
         }
-        return "\(Self.numberText(seconds / 60, maximumFractionDigits: 0)) 分钟"
     }
 
     var batteryDeltaText: String {
